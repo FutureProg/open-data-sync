@@ -1,0 +1,12 @@
+{
+  "extends": "./.void/tsconfig.json",
+  "compilerOptions": {
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true
+  },
+  // Void's generated tsconfig lists routes.d.ts, which it does not emit for a cron-only Worker.
+  "files": [".void/env.d.ts"],
+  "include": ["**/*.ts"],
+  "exclude": ["node_modules", "dist", ".void/dist"]
+}
