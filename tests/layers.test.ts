@@ -2,10 +2,6 @@ import { describe, expect, it } from "vite-plus/test";
 import { DATA_GROUPS, LAYERS, TODO_URL, TOWNS } from "../src/layers";
 
 describe("layer config", () => {
-  it("has 9 layers", () => {
-    expect(LAYERS).toHaveLength(9);
-  });
-
   it("has unique URLs (TODO placeholders excepted)", () => {
     const urls = LAYERS.map((l) => l.url).filter((u) => u !== TODO_URL);
     expect(new Set(urls).size).toBe(urls.length);

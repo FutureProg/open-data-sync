@@ -1,8 +1,7 @@
 import type { LayerConfig } from "./layers";
 import type { ArcgisFeature } from "./types";
 
-export type { Db } from "./db";
-import type { Db } from "./db";
+import type { Database } from "./db";
 
 /**
  * Upsert features into `open_data_sync.arcgis_raw_features`, conflicting on
@@ -12,7 +11,7 @@ import type { Db } from "./db";
  * TODO: implement. Not implemented in the scaffold.
  */
 export async function upsertFeatures(
-  _db: Db,
+  _database: Database,
   _layer: LayerConfig,
   _features: ArcgisFeature[],
 ): Promise<number> {

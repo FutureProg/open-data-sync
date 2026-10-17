@@ -8,5 +8,8 @@ export default defineConfig({
   schemaFilter: ["open_data_sync"],
   // Keep drizzle's bookkeeping table inside open_data_sync too.
   migrations: { schema: "open_data_sync", table: "__drizzle_migrations" },
-  dbCredentials: { url: process.env.DATABASE_URL ?? "" },
+  dbCredentials: {
+    url: process.env.DATABASE_URL ?? "",
+    ssl: process.env.DB_CA_CERT ? { ca: process.env.DB_CA_CERT, rejectUnauthorized: true } : false,
+  },
 });

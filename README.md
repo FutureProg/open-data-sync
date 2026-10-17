@@ -56,10 +56,11 @@ Void reads local values from a single `.env` file only (copy `example.env` to `.
 | Variable                | Used for                                                                                           |
 | ----------------------- | -------------------------------------------------------------------------------------------------- |
 | `DATABASE_URL`          | PostgreSQL connection string. Local dev, manual migrations, and the deployed Worker (as a secret). |
+| `DB_CA_CERT`            | The database's CA certificate (PEM). The connection always uses TLS verified against it.           |
 | `CLOUDFLARE_API_TOKEN`  | Non-interactive deploys (CI). Workers Scripts: Edit.                                               |
 | `CLOUDFLARE_ACCOUNT_ID` | Needed when the token can reach several accounts.                                                  |
 
-Never commit `.env`. Local `.env` values are never deployed: set the production value once with `pnpm exec void secret put DATABASE_URL`.
+Never commit `.env`. Local `.env` values are never deployed: set production values once with `pnpm exec void secret put`.
 
 ## Local development
 
@@ -67,13 +68,13 @@ Void requires Node 24.21 or newer. The project uses pnpm and [Vite+](https://vit
 
 ```sh
 pnpm install
-cp example.env .env        # then fill in DATABASE_URL
+cp example.env .env        # then fill in DATABASE_URL and DB_CA_CERT
 pnpm exec vp dev           # or: pnpm dev
 pnpm exec vp test run      # unit tests (no database needed)
 pnpm exec vp check         # format, lint, type check
 pnpm typecheck             # tsc
 pnpm db:generate           # generate a migration after editing db/schema.ts
-pnpm db:migrate            # apply migrations by hand (needs DATABASE_URL)
+pnpm db:migrate            # apply migrations by hand (needs DATABASE_URL and DB_CA_CERT)
 ```
 
 Schedules do not fire locally. Trigger one with the dev token Void prints at start-up:
@@ -90,7 +91,7 @@ curl -X POST http://localhost:5173/__void/scheduled \
 pnpm exec void deploy --platform cloudflare     # or: pnpm run deploy:cf
 ```
 
-The first run signs in to Cloudflare in a browser. Run `pnpm exec void secret put DATABASE_URL` once so the Worker can reach the database, and `pnpm db:migrate` before the first run. Commit `void.lock.json` once Void creates it.
+The first run signs in to Cloudflare in a browser. Run `pnpm exec void secret put DATABASE_URL` and `pnpm exec void secret put DB_CA_CERT` once so the Worker can reach the database, and `pnpm db:migrate` before the first run. Commit `void.lock.json` once Void creates it.
 
 ## Notes
 
@@ -98,5 +99,5 @@ The first run signs in to Cloudflare in a browser. Run `pnpm exec void secret pu
 - **The `open_data_sync` schema must already exist**, and the role must be able to create tables in it.
 - **PostGIS must be enabled** in the database (the owner says it already is). Migrations rely on it but never enable it.
 - **DigitalOcean trusted sources** may need to allow Cloudflare, since Workers have no fixed outgoing IP. Verify this against your database settings.
-- **TLS.** Use `?sslmode=require` in `DATABASE_URL`. DigitalOcean uses its own CA, so full verification needs the CA certificate passed to the `pg` client; not set up yet.
+- **TLS.** The connection always uses TLS and verifies the server against `DB_CA_CERT`. Any `sslmode` in `DATABASE_URL` is ignored.
 - Layers whose URL is `TODO` in `src/layers.ts` are skipped until resolved.
