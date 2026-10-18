@@ -9,6 +9,13 @@ export const DEFAULT_BATCH_SIZE = 500;
 /** Anything that can run an insert: the database itself or a transaction on it. */
 export type InsertExecutor = Pick<Database, "insert">;
 
+/** `excluded.<column>` when it differs from the stored value (null-safe), else the stored value. */
+function keepUnlessChanged(column: string) {
+  const stored = sql.raw(`arcgis_raw_features.${column}`);
+  const incoming = sql.raw(`excluded.${column}`);
+  return sql`CASE WHEN ${stored} IS DISTINCT FROM ${incoming} THEN ${incoming} ELSE ${stored} END`;
+}
+
 export function chunk<Item>(items: readonly Item[], size: number): Item[][] {
   const chunks: Item[][] = [];
   for (let start = 0; start < items.length; start += size) {
@@ -47,10 +54,12 @@ export async function upsertFeatures(
       )
       .onConflictDoUpdate({
         target: [arcgisRawFeatures.layerId, arcgisRawFeatures.sourceFeatureId],
+        // `synced_at` always moves (stale detection depends on it); the other
+        // columns are only replaced when the incoming value differs.
         set: {
-          dataGroup: sql`excluded.data_group`,
-          attributes: sql`excluded.attributes`,
-          geometry: sql`excluded.geometry`,
+          dataGroup: keepUnlessChanged("data_group"),
+          attributes: keepUnlessChanged("attributes"),
+          geometry: keepUnlessChanged("geometry"),
           syncedAt: sql`excluded.synced_at`,
         },
       });

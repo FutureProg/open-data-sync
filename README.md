@@ -13,9 +13,9 @@ See [CONTEXT.md](./CONTEXT.md) for the vocabulary used here.
 
 ## How a sync works
 
-1. Upsert `LAYERS` into `arcgis_raw_layers`, then load the enabled layers.
+1. Upsert `LAYERS` into `arcgis_raw_layers` (a row is only updated if its town, data group or name changed), then load the enabled layers.
 2. Per layer, fetch GeoJSON in WGS84 with the Esri `@esri/arcgis-rest-feature-service` `queryAllFeatures` helper (pages by the layer's `maxRecordCount`, understands `exceededTransferLimit` at the top level or in `properties`, throws on HTTP errors and on HTTP 200 `error` bodies). Because the helper stops when the flag is missing, the received count is checked against the layer's own `returnCountOnly` count and a shortfall fails the layer. A feature's id is `feature.id`, else `OBJECTID`/`objectid`/`FID`; features with no id are skipped and counted.
-3. Only if the whole fetch succeeded, in one transaction: upsert features in batches (geometry via `ST_SetSRID(ST_GeomFromGeoJSON(...), 4326)`), delete rows of that layer not seen in this run, and set `last_synced_at`. If a layer that already has stored rows comes back with zero features, that layer is treated as failed: nothing is deleted or written and `last_synced_at` is unchanged (an empty layer with no stored rows is fine).
+3. Only if the whole fetch succeeded, in one transaction: upsert features in batches (geometry via `ST_SetSRID(ST_GeomFromGeoJSON(...), 4326)`; `synced_at` always moves, while `attributes`, `data_group` and `geometry` only change when the value differs), delete rows of that layer not seen in this run, and set `last_synced_at`. If a layer that already has stored rows comes back with zero features, that layer is treated as failed: nothing is deleted or written and `last_synced_at` is unchanged (an empty layer with no stored rows is fine).
 4. A failing layer does not stop the others. A per-layer summary is logged and the run fails at the end if any layer failed.
 
 ## Tables

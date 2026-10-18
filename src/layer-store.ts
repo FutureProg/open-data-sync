@@ -42,6 +42,9 @@ export async function bootstrapLayers(
         name: sql`excluded.name`,
         updatedAt: sql`now()`,
       },
+      // Leave unchanged rows alone (`enabled` is never written here).
+      setWhere: sql`(arcgis_raw_layers.town, arcgis_raw_layers.data_group, arcgis_raw_layers.name)
+        IS DISTINCT FROM (excluded.town, excluded.data_group, excluded.name)`,
     });
 }
 

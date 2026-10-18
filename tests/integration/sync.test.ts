@@ -221,6 +221,85 @@ describe.skipIf(!dockerAvailable)("sync against PostGIS", () => {
     ]);
   });
 
+  describe("bootstrap", () => {
+    const layerRow = async () =>
+      (
+        await rows(sql`
+          SELECT xmin::text AS version, updated_at::text AS updated_at, name, data_group
+          FROM open_data_sync.arcgis_raw_layers WHERE service_url = ${roadsUrl}`)
+      )[0]!;
+
+    it("does not rewrite a layer row whose values are unchanged", async () => {
+      await bootstrapLayers(testDatabase.database, [roads]);
+      const before = await layerRow();
+      await bootstrapLayers(testDatabase.database, [roads]);
+      expect(await layerRow()).toEqual(before);
+    });
+
+    it("updates a layer row when its name or data group changed", async () => {
+      await bootstrapLayers(testDatabase.database, [roads]);
+      const before = await layerRow();
+      await bootstrapLayers(testDatabase.database, [
+        { ...roads, name: "Renamed roads", dataGroup: "intersections" },
+      ]);
+      const after = await layerRow();
+      expect(after).toMatchObject({ name: "Renamed roads", data_group: "intersections" });
+      expect(after.version).not.toBe(before.version);
+      expect(after.updated_at).not.toBe(before.updated_at);
+    });
+  });
+
+  describe("re-syncing features", () => {
+    const featureRow = async () =>
+      (
+        await rows(sql`
+          SELECT attributes->>'NAME' AS name, ST_AsText(geometry) AS wkt, synced_at
+          FROM open_data_sync.arcgis_raw_features WHERE source_feature_id = '1'`)
+      )[0]!;
+    const syncOnce = async (feature: object, day: number) => {
+      arcgis({ [roadsUrl]: [feature] });
+      await syncAllLayers(
+        dependencies(new Date(`2026-01-${String(day).padStart(2, "0")}T06:00:00Z`)),
+        [roads],
+      );
+    };
+    const reversed = {
+      type: "LineString",
+      coordinates: [
+        [-79.7, 43.6],
+        [-79.8, 43.5],
+      ],
+    };
+
+    it("keeps identical data and advances synced_at", async () => {
+      await syncOnce(geoJsonFeature(1), 5);
+      const before = await featureRow();
+      await syncOnce(geoJsonFeature(1), 12);
+      const after = await featureRow();
+      expect({ name: after.name, wkt: after.wkt }).toEqual({ name: before.name, wkt: before.wkt });
+      expect(new Date(after.synced_at as string).toISOString()).toBe("2026-01-12T06:00:00.000Z");
+    });
+
+    it("keeps a null geometry null when re-sent", async () => {
+      await syncOnce(geoJsonFeature(1, null), 5);
+      await syncOnce(geoJsonFeature(1, null), 12);
+      expect((await featureRow()).wkt).toBeNull();
+    });
+
+    it("updates changed attributes and changed geometry, including null to a shape and back", async () => {
+      await syncOnce(geoJsonFeature(1, null), 5);
+      await syncOnce(geoJsonFeature(1, line, { NAME: "changed" }), 12);
+      expect(await featureRow()).toMatchObject({
+        name: "changed",
+        wkt: "LINESTRING(-79.8 43.5,-79.7 43.6)",
+      });
+      await syncOnce(geoJsonFeature(1, reversed, { NAME: "changed" }), 19);
+      expect((await featureRow()).wkt).toBe("LINESTRING(-79.7 43.6,-79.8 43.5)");
+      await syncOnce(geoJsonFeature(1, null, { NAME: "changed" }), 26);
+      expect((await featureRow()).wkt).toBeNull();
+    });
+  });
+
   it("writes large layers in several batches", async () => {
     await bootstrapLayers(testDatabase.database, [roads]);
     const [layer] = await listEnabledLayers(testDatabase.database);
