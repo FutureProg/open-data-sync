@@ -7,8 +7,11 @@ export default defineConfig({
   worker: {
     compatibility_date: "2026-02-24",
     compatibility_flags: ["nodejs_compat"],
+    
   },
   cloudflare: {
     name: "open-data-sync",
+    preview_urls: true,
+    workers_dev: true
   },
 });
