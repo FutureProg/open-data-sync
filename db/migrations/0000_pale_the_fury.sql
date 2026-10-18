@@ -1,4 +1,4 @@
--- The open_data_sync schema is created by the database owner, not by this migration.
+--> statement-breakpoint
 CREATE TABLE "open_data_sync"."arcgis_raw_features" (
 	"id" bigserial PRIMARY KEY NOT NULL,
 	"layer_id" bigint NOT NULL,
