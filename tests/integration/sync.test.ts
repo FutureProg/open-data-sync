@@ -1,5 +1,14 @@
 import { sql } from "drizzle-orm";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vite-plus/test";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vite-plus/test";
 import type { LayerConfig } from "../../src/layers";
 import { bootstrapLayers, listEnabledLayers, writeLayerFeatures } from "../../src/layer-store";
 import { syncAllLayers } from "../../src/sync";
@@ -49,24 +58,27 @@ const geoJsonFeature = (id: number, geometry: unknown = line, properties: object
 /** ArcGIS stand-in: layer URL -> features, or an Error to answer with a JSON error body. */
 function arcgis(layers: Record<string, unknown[] | Error>) {
   const requested: string[] = [];
-  const fetchFunction: typeof fetch = async (input) => {
+  // The Esri client always calls the global `fetch`.
+  vi.stubGlobal("fetch", async (input: string | URL | Request) => {
     const url = new URL(input instanceof Request ? input.url : input.toString());
     const layerUrl = url.origin + url.pathname.replace(/\/query$/, "");
     requested.push(layerUrl);
     const served = layers[layerUrl];
     if (!url.pathname.endsWith("/query")) return Response.json({ maxRecordCount: 100 });
+    if (url.searchParams.get("returnCountOnly") === "true") {
+      return Response.json({ count: Array.isArray(served) ? served.length : 0 });
+    }
     if (served instanceof Error)
       return Response.json({ error: { code: 500, message: served.message } });
     return Response.json({ type: "FeatureCollection", features: served ?? [] });
-  };
-  return { fetchFunction, requested };
+  });
+  return { requested };
 }
 
 describe.skipIf(!dockerAvailable)("sync against PostGIS", () => {
   let testDatabase: TestDatabase;
-  const dependencies = (fetchFunction: typeof fetch, now = new Date("2026-01-05T06:00:00Z")) => ({
+  const dependencies = (now = new Date("2026-01-05T06:00:00Z")) => ({
     database: testDatabase.database,
-    fetchFunction,
     now: () => now,
     log: () => {},
   });
@@ -79,13 +91,16 @@ describe.skipIf(!dockerAvailable)("sync against PostGIS", () => {
   afterAll(async () => {
     await testDatabase?.stop();
   });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
   beforeEach(async () => {
     await testDatabase.reset();
   });
 
   it("stores features with attributes and 4326 PostGIS geometry, allowing null geometry", async () => {
-    const { fetchFunction } = arcgis({ [roadsUrl]: [geoJsonFeature(1), geoJsonFeature(2, null)] });
-    await syncAllLayers(dependencies(fetchFunction), [roads]);
+    arcgis({ [roadsUrl]: [geoJsonFeature(1), geoJsonFeature(2, null)] });
+    await syncAllLayers(dependencies(), [roads]);
 
     const stored = await rows(sql`
       SELECT source_feature_id, data_group, attributes->>'NAME' AS name,
@@ -110,16 +125,13 @@ describe.skipIf(!dockerAvailable)("sync against PostGIS", () => {
   });
 
   it("updates rows in place on a second run and deletes features that disappeared", async () => {
-    const first = arcgis({ [roadsUrl]: [geoJsonFeature(1), geoJsonFeature(2)] });
-    await syncAllLayers(dependencies(first.fetchFunction), [roads]);
+    arcgis({ [roadsUrl]: [geoJsonFeature(1), geoJsonFeature(2)] });
+    await syncAllLayers(dependencies(), [roads]);
 
-    const second = arcgis({
+    arcgis({
       [roadsUrl]: [geoJsonFeature(2, line, { NAME: "renamed" }), geoJsonFeature(3)],
     });
-    const results = await syncAllLayers(
-      dependencies(second.fetchFunction, new Date("2026-01-12T06:00:00Z")),
-      [roads],
-    );
+    const results = await syncAllLayers(dependencies(new Date("2026-01-12T06:00:00Z")), [roads]);
 
     const stored = await rows(sql`
       SELECT source_feature_id, attributes->>'NAME' AS name
@@ -136,17 +148,15 @@ describe.skipIf(!dockerAvailable)("sync against PostGIS", () => {
   });
 
   it("keeps a failing layer's existing rows, still syncs the others, then throws", async () => {
-    const healthy = arcgis({ [roadsUrl]: [geoJsonFeature(1)], [wardsUrl]: [geoJsonFeature(10)] });
-    await syncAllLayers(dependencies(healthy.fetchFunction), [roads, wards]);
+    arcgis({ [roadsUrl]: [geoJsonFeature(1)], [wardsUrl]: [geoJsonFeature(10)] });
+    await syncAllLayers(dependencies(), [roads, wards]);
 
-    const broken = arcgis({
+    arcgis({
       [roadsUrl]: new Error("service down"),
       [wardsUrl]: [geoJsonFeature(11)],
     });
     const later = new Date("2026-01-12T06:00:00Z");
-    await expect(
-      syncAllLayers(dependencies(broken.fetchFunction, later), [roads, wards]),
-    ).rejects.toThrow(roadsUrl);
+    await expect(syncAllLayers(dependencies(later), [roads, wards])).rejects.toThrow(roadsUrl);
 
     const stored = await rows(sql`
       SELECT l.service_url, f.source_feature_id FROM open_data_sync.arcgis_raw_features f
@@ -158,17 +168,14 @@ describe.skipIf(!dockerAvailable)("sync against PostGIS", () => {
   });
 
   it("fails a populated layer that suddenly returns zero features, keeping its rows", async () => {
-    const healthy = arcgis({ [roadsUrl]: [geoJsonFeature(1)], [wardsUrl]: [geoJsonFeature(10)] });
-    await syncAllLayers(dependencies(healthy.fetchFunction), [roads, wards]);
+    arcgis({ [roadsUrl]: [geoJsonFeature(1)], [wardsUrl]: [geoJsonFeature(10)] });
+    await syncAllLayers(dependencies(), [roads, wards]);
 
     const later = new Date("2026-01-12T06:00:00Z");
-    const emptied = arcgis({ [roadsUrl]: [], [wardsUrl]: [geoJsonFeature(11)] });
+    arcgis({ [roadsUrl]: [], [wardsUrl]: [geoJsonFeature(11)] });
     const logged: string[] = [];
     await expect(
-      syncAllLayers({ ...dependencies(emptied.fetchFunction, later), log: (m) => logged.push(m) }, [
-        roads,
-        wards,
-      ]),
+      syncAllLayers({ ...dependencies(later), log: (m) => logged.push(m) }, [roads, wards]),
     ).rejects.toThrow(roadsUrl);
 
     expect(logged.join("\n")).toContain("returned 0 features but 1 rows exist");
@@ -186,8 +193,8 @@ describe.skipIf(!dockerAvailable)("sync against PostGIS", () => {
   });
 
   it("does not fail an empty layer that has no stored rows", async () => {
-    const { fetchFunction } = arcgis({ [roadsUrl]: [] });
-    const results = await syncAllLayers(dependencies(fetchFunction), [roads]);
+    arcgis({ [roadsUrl]: [] });
+    const results = await syncAllLayers(dependencies(), [roads]);
     expect(results[0]).toMatchObject({ fetched: 0, upserted: 0, deleted: 0 });
     expect(results[0]!.error).toBeUndefined();
   });
@@ -197,12 +204,12 @@ describe.skipIf(!dockerAvailable)("sync against PostGIS", () => {
     await testDatabase.database.execute(
       sql`UPDATE open_data_sync.arcgis_raw_layers SET enabled = false WHERE service_url = ${wardsUrl}`,
     );
-    const { fetchFunction, requested } = arcgis({
+    const { requested } = arcgis({
       [roadsUrl]: [geoJsonFeature(1)],
       [wardsUrl]: [geoJsonFeature(2)],
     });
 
-    await syncAllLayers(dependencies(fetchFunction), [roads, wards, unresolved]);
+    await syncAllLayers(dependencies(), [roads, wards, unresolved]);
 
     expect(new Set(requested)).toEqual(new Set([roadsUrl]));
     const layers = await rows(

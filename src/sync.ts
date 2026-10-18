@@ -11,7 +11,6 @@ import {
 
 export interface SyncDependencies {
   database: Database;
-  fetchFunction: typeof fetch;
   now: () => Date;
   log: (message: string) => void;
 }
@@ -37,9 +36,7 @@ async function syncLayer(
     deleted: 0,
   };
   try {
-    const { features, skippedWithoutId } = await fetchLayerFeatures(layer.serviceUrl, {
-      fetchFunction: dependencies.fetchFunction,
-    });
+    const { features, skippedWithoutId } = await fetchLayerFeatures(layer.serviceUrl);
     result.fetched = features.length + skippedWithoutId;
     result.skipped = skippedWithoutId;
     if (features.length === 0) {

@@ -1,16 +1,10 @@
+import { queryAllFeatures, queryFeatures } from "@esri/arcgis-rest-feature-service";
 import type { ArcgisFeature } from "./types";
-
-/** Used when the layer's `maxRecordCount` cannot be read. */
-const DEFAULT_PAGE_SIZE = 1000;
 
 export interface FetchedLayer {
   features: ArcgisFeature[];
   /** Features dropped because no id could be found. */
   skippedWithoutId: number;
-}
-
-export interface FetchLayerDependencies {
-  fetchFunction: typeof fetch;
 }
 
 interface GeoJsonFeature {
@@ -20,50 +14,6 @@ interface GeoJsonFeature {
 }
 
 const ID_PROPERTY_NAMES = ["OBJECTID", "objectid", "FID"] as const;
-
-function describeError(error: unknown): string {
-  if (typeof error !== "object" || error === null) return JSON.stringify(error);
-  const { code, message, details } = error as {
-    code?: number;
-    message?: string;
-    details?: string[];
-  };
-  const detailText = Array.isArray(details) && details.length > 0 ? ` (${details.join("; ")})` : "";
-  return `${code ?? "unknown code"}: ${message ?? "no message"}${detailText}`;
-}
-
-/** ArcGIS reports many failures as HTTP 200 with a JSON `{ error }` body. */
-async function getJson(fetchFunction: typeof fetch, url: URL): Promise<Record<string, unknown>> {
-  const response = await fetchFunction(url.toString());
-  if (!response.ok) {
-    throw new Error(
-      `ArcGIS request failed with HTTP ${response.status}: ${url.origin}${url.pathname}`,
-    );
-  }
-  const body = (await response.json()) as Record<string, unknown>;
-  if (body.error) {
-    throw new Error(
-      `ArcGIS returned an error for ${url.origin}${url.pathname} - ${describeError(body.error)}`,
-    );
-  }
-  return body;
-}
-
-async function readPageSize(fetchFunction: typeof fetch, layerUrl: string): Promise<number> {
-  try {
-    const metadata = await getJson(fetchFunction, new URL(`${layerUrl}?f=json`));
-    const maxRecordCount = metadata.maxRecordCount;
-    if (typeof maxRecordCount === "number" && maxRecordCount > 0) return maxRecordCount;
-  } catch {
-    // Metadata is only a hint for the page size; fall back to the default.
-  }
-  return DEFAULT_PAGE_SIZE;
-}
-
-function reportsMoreData(page: Record<string, unknown>): boolean {
-  const properties = page.properties as Record<string, unknown> | null | undefined;
-  return page.exceededTransferLimit === true || properties?.exceededTransferLimit === true;
-}
 
 function extractId(feature: GeoJsonFeature): string | undefined {
   const candidates = [feature.id, ...ID_PROPERTY_NAMES.map((name) => feature.properties?.[name])];
@@ -75,48 +25,44 @@ function extractId(feature: GeoJsonFeature): string | undefined {
 }
 
 /**
- * Fetch every feature of an ArcGIS layer as GeoJSON in WGS84 (4326), paging with
- * `resultOffset`/`resultRecordCount`. Throws if any request fails, so a caller
- * never receives a partial result.
+ * Fetch every feature of an ArcGIS layer as GeoJSON in WGS84 (4326).
+ *
+ * Requests, paging (page size from the layer's `maxRecordCount`, and an
+ * `exceededTransferLimit` flag found at the top level or in `properties`) and
+ * error handling (HTTP errors and HTTP 200 `{ error }` bodies) come from the Esri
+ * `queryAllFeatures` helper. The Esri client always uses the global `fetch`.
+ *
+ * The helper stops when the flag is missing, so a server that never sets it
+ * would be truncated silently. To rule that out, the number of features
+ * received is checked against the layer's own count, and a shortfall throws.
  */
-export async function fetchLayerFeatures(
-  layerUrl: string,
-  { fetchFunction }: FetchLayerDependencies,
-): Promise<FetchedLayer> {
-  const pageSize = await readPageSize(fetchFunction, layerUrl);
-  const featuresById = new Map<string, ArcgisFeature>();
-  let skippedWithoutId = 0;
+export async function fetchLayerFeatures(layerUrl: string): Promise<FetchedLayer> {
+  const response = await queryAllFeatures({ url: layerUrl, f: "geojson", outSR: "4326" });
+  const received = response.features as unknown as GeoJsonFeature[];
 
-  for (let offset = 0; ; offset += pageSize) {
-    const url = new URL(`${layerUrl}/query`);
-    url.searchParams.set("where", "1=1");
-    url.searchParams.set("outFields", "*");
-    url.searchParams.set("outSR", "4326");
-    url.searchParams.set("f", "geojson");
-    url.searchParams.set("resultOffset", String(offset));
-    url.searchParams.set("resultRecordCount", String(pageSize));
-
-    const page = await getJson(fetchFunction, url);
-    const pageFeatures = Array.isArray(page.features) ? (page.features as GeoJsonFeature[]) : [];
-
-    for (const feature of pageFeatures) {
-      const sourceFeatureId = extractId(feature);
-      if (sourceFeatureId === undefined) {
-        skippedWithoutId += 1;
-        continue;
-      }
-      featuresById.set(sourceFeatureId, {
-        sourceFeatureId,
-        attributes: feature.properties ?? {},
-        geometry: feature.geometry ?? null,
-      });
-    }
-
-    // Servers report "more data" at the top level, inside `properties`, both or
-    // neither, so a full page also counts: a missing flag must never truncate.
-    const hasMore = reportsMoreData(page) || pageFeatures.length >= pageSize;
-    if (pageFeatures.length === 0 || !hasMore) break;
+  const { count } = (await queryFeatures({
+    url: layerUrl,
+    returnCountOnly: true,
+  })) as { count?: number };
+  if (typeof count === "number" && received.length < count) {
+    throw new Error(
+      `${layerUrl} reports ${count} features but only ${received.length} were returned`,
+    );
   }
 
+  const featuresById = new Map<string, ArcgisFeature>();
+  let skippedWithoutId = 0;
+  for (const feature of received) {
+    const sourceFeatureId = extractId(feature);
+    if (sourceFeatureId === undefined) {
+      skippedWithoutId += 1;
+      continue;
+    }
+    featuresById.set(sourceFeatureId, {
+      sourceFeatureId,
+      attributes: feature.properties ?? {},
+      geometry: feature.geometry ?? null,
+    });
+  }
   return { features: [...featuresById.values()], skippedWithoutId };
 }

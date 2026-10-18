@@ -11,7 +11,6 @@ export default defineScheduled(async () => {
   try {
     await syncAllLayers({
       database,
-      fetchFunction: fetch,
       now: () => new Date(),
       log: (message) => console.log(message),
     });
