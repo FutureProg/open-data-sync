@@ -1,0 +1,5 @@
+allowBuilds:
+  esbuild: true
+  workerd: true
+  # Void ships its own binaries; the native build is not needed.
+  better-sqlite3: false
