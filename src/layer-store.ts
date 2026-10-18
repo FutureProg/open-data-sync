@@ -1,6 +1,7 @@
 import { and, count, eq, ne, sql } from "drizzle-orm";
 import { arcgisRawFeatures, arcgisRawLayers } from "../db/schema";
 import type { Database } from "./db";
+import type { SourceFingerprint } from "./fingerprint";
 import { isResolved, type LayerConfig } from "./layers";
 import type { ArcgisFeature } from "./types";
 import { DEFAULT_BATCH_SIZE, upsertFeatures } from "./upsert";
@@ -11,6 +12,9 @@ export interface StoredLayer {
   dataGroup: string;
   name: string | null;
   serviceUrl: string;
+  lastSyncedAt: Date | null;
+  /** Fingerprint saved by the last successful full sync, if any. */
+  fingerprint: SourceFingerprint | null;
 }
 
 /**
@@ -49,17 +53,39 @@ export async function bootstrapLayers(
 }
 
 export async function listEnabledLayers(database: Database): Promise<StoredLayer[]> {
-  return database
+  const rows = await database
     .select({
       id: arcgisRawLayers.id,
       town: arcgisRawLayers.town,
       dataGroup: arcgisRawLayers.dataGroup,
       name: arcgisRawLayers.name,
       serviceUrl: arcgisRawLayers.serviceUrl,
+      lastSyncedAt: arcgisRawLayers.lastSyncedAt,
+      sourceFeatureCount: arcgisRawLayers.sourceFeatureCount,
+      sourceLastEditedAt: arcgisRawLayers.sourceLastEditedAt,
     })
     .from(arcgisRawLayers)
     .where(eq(arcgisRawLayers.enabled, true))
     .orderBy(arcgisRawLayers.id);
+  return rows.map(({ sourceFeatureCount, sourceLastEditedAt, ...layer }) => ({
+    ...layer,
+    fingerprint:
+      sourceFeatureCount === null
+        ? null
+        : { featureCount: sourceFeatureCount, lastEditedAt: sourceLastEditedAt },
+  }));
+}
+
+/** Record that the source was checked and found unchanged; no feature row is touched. */
+export async function markLayerUnchanged(
+  database: Database,
+  layer: StoredLayer,
+  syncedAt: Date,
+): Promise<void> {
+  await database
+    .update(arcgisRawLayers)
+    .set({ lastSyncedAt: syncedAt, updatedAt: syncedAt })
+    .where(eq(arcgisRawLayers.id, layer.id));
 }
 
 export async function countStoredFeatures(database: Database, layerId: number): Promise<number> {
@@ -72,7 +98,8 @@ export async function countStoredFeatures(database: Database, layerId: number): 
 
 /**
  * Replace a layer's stored features with a fully fetched set, in one
- * transaction: upsert, delete rows not seen in this run, stamp `last_synced_at`.
+ * transaction: upsert, delete rows not seen in this run, stamp `last_synced_at`
+ * and save the source fingerprint (null clears it when it is unknown).
  * Call this only after the fetch fully succeeded; any failure rolls back.
  */
 export async function writeLayerFeatures(
@@ -81,6 +108,7 @@ export async function writeLayerFeatures(
   features: readonly ArcgisFeature[],
   syncedAt: Date,
   batchSize: number = DEFAULT_BATCH_SIZE,
+  fingerprint: SourceFingerprint | null = null,
 ): Promise<{ upserted: number; deleted: number }> {
   return database.transaction(async (transaction) => {
     const upserted = await upsertFeatures(transaction, layer, features, syncedAt, batchSize);
@@ -91,7 +119,12 @@ export async function writeLayerFeatures(
       .returning({ id: arcgisRawFeatures.id });
     await transaction
       .update(arcgisRawLayers)
-      .set({ lastSyncedAt: syncedAt, updatedAt: syncedAt })
+      .set({
+        lastSyncedAt: syncedAt,
+        updatedAt: syncedAt,
+        sourceFeatureCount: fingerprint?.featureCount ?? null,
+        sourceLastEditedAt: fingerprint?.lastEditedAt ?? null,
+      })
       .where(eq(arcgisRawLayers.id, layer.id));
     return { upserted, deleted: deletedRows.length };
   });

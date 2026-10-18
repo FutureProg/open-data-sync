@@ -4,6 +4,7 @@ import {
   boolean,
   customType,
   index,
+  integer,
   jsonb,
   pgSchema,
   text,
@@ -42,6 +43,12 @@ export const arcgisRawLayers = openDataSync.table("arcgis_raw_layers", {
   serviceUrl: text("service_url").notNull().unique(),
   enabled: boolean("enabled").notNull().default(true),
   lastSyncedAt: timestamp("last_synced_at", { withTimezone: true }),
+  /**
+   * Fingerprint of the source as of the last full sync: its feature count and
+   * latest edit date. Null until a layer with an edit-date field has synced.
+   */
+  sourceFeatureCount: integer("source_feature_count"),
+  sourceLastEditedAt: timestamp("source_last_edited_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });

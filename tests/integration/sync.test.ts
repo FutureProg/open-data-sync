@@ -34,6 +34,7 @@ const wards: LayerConfig = {
   name: "Wards",
   url: wardsUrl,
 };
+const trackedRoads: LayerConfig = { ...roads, editDateField: "EDIT_DATE" };
 const unresolved: LayerConfig = {
   town: "Oakville",
   dataGroup: "road_segments",
@@ -55,9 +56,22 @@ const geoJsonFeature = (id: number, geometry: unknown = line, properties: object
   geometry,
 });
 
-/** ArcGIS stand-in: layer URL -> features, or an Error to answer with a JSON error body. */
-function arcgis(layers: Record<string, unknown[] | Error>) {
+interface Statistics {
+  count: number;
+  latestEdit: string | null;
+}
+
+/**
+ * ArcGIS stand-in: layer URL -> features, or an Error to answer with a JSON error body.
+ * `statistics` answers edit-date statistics queries per layer URL; a layer without an
+ * entry (or with an Error) answers them with an error, as a server without support would.
+ */
+function arcgis(
+  layers: Record<string, unknown[] | Error>,
+  statistics: Record<string, Statistics | Error> = {},
+) {
   const requested: string[] = [];
+  const downloads: string[] = [];
   // The Esri client always calls the global `fetch`.
   vi.stubGlobal("fetch", async (input: string | URL | Request) => {
     const url = new URL(input instanceof Request ? input.url : input.toString());
@@ -65,14 +79,33 @@ function arcgis(layers: Record<string, unknown[] | Error>) {
     requested.push(layerUrl);
     const served = layers[layerUrl];
     if (!url.pathname.endsWith("/query")) return Response.json({ maxRecordCount: 100 });
+    if (url.searchParams.has("outStatistics")) {
+      const answer = statistics[layerUrl];
+      if (!answer || answer instanceof Error) {
+        return Response.json({
+          error: { code: 400, message: answer?.message ?? "Unsupported operation" },
+        });
+      }
+      return Response.json({
+        features: [
+          {
+            attributes: {
+              feature_count: answer.count,
+              latest_edit: answer.latestEdit === null ? null : Date.parse(answer.latestEdit),
+            },
+          },
+        ],
+      });
+    }
     if (url.searchParams.get("returnCountOnly") === "true") {
       return Response.json({ count: Array.isArray(served) ? served.length : 0 });
     }
+    downloads.push(layerUrl);
     if (served instanceof Error)
       return Response.json({ error: { code: 500, message: served.message } });
     return Response.json({ type: "FeatureCollection", features: served ?? [] });
   });
-  return { requested };
+  return { requested, downloads };
 }
 
 describe.skipIf(!dockerAvailable)("sync against PostGIS", () => {
@@ -219,6 +252,165 @@ describe.skipIf(!dockerAvailable)("sync against PostGIS", () => {
       { service_url: roadsUrl, enabled: true },
       { service_url: wardsUrl, enabled: false },
     ]);
+  });
+
+  describe("skipping unchanged layers", () => {
+    const firstRun = new Date("2026-01-05T06:00:00Z");
+    const secondRun = new Date("2026-01-12T06:00:00Z");
+    const edited = "2026-01-02T15:30:00.000Z";
+    const unchangedStatistics = { [roadsUrl]: { count: 2, latestEdit: edited } };
+
+    const layerState = async () =>
+      (
+        await rows(sql`
+          SELECT last_synced_at, source_feature_count, source_last_edited_at
+          FROM open_data_sync.arcgis_raw_layers WHERE service_url = ${roadsUrl}`)
+      )[0]!;
+    const featureState = async () =>
+      rows(sql`
+        SELECT source_feature_id, attributes->>'NAME' AS name, synced_at, xmin::text AS version
+        FROM open_data_sync.arcgis_raw_features ORDER BY source_feature_id`);
+    const iso = (value: unknown) => new Date(value as string).toISOString();
+
+    it("adds nullable fingerprint columns to the layers table", async () => {
+      const columns = await rows(sql`
+        SELECT column_name, data_type, is_nullable FROM information_schema.columns
+        WHERE table_schema = 'open_data_sync' AND table_name = 'arcgis_raw_layers'
+          AND column_name IN ('source_feature_count', 'source_last_edited_at')
+        ORDER BY column_name`);
+      expect(columns).toEqual([
+        { column_name: "source_feature_count", data_type: "integer", is_nullable: "YES" },
+        {
+          column_name: "source_last_edited_at",
+          data_type: "timestamp with time zone",
+          is_nullable: "YES",
+        },
+      ]);
+    });
+
+    it("downloads in full on the first run and stores the fingerprint", async () => {
+      arcgis({ [roadsUrl]: [geoJsonFeature(1), geoJsonFeature(2)] }, unchangedStatistics);
+      const results = await syncAllLayers(dependencies(firstRun), [trackedRoads]);
+
+      expect(results[0]).toMatchObject({ fetched: 2, upserted: 2, unchanged: false });
+      const layer = await layerState();
+      expect(layer.source_feature_count).toBe(2);
+      expect(iso(layer.source_last_edited_at)).toBe(edited);
+    });
+
+    it("leaves feature rows untouched and advances last_synced_at when the source is unchanged", async () => {
+      arcgis({ [roadsUrl]: [geoJsonFeature(1), geoJsonFeature(2)] }, unchangedStatistics);
+      await syncAllLayers(dependencies(firstRun), [trackedRoads]);
+      const featuresBefore = await featureState();
+
+      // Were the layer downloaded again, it would now answer with different data.
+      const { downloads } = arcgis(
+        { [roadsUrl]: [geoJsonFeature(1, line, { NAME: "changed" })] },
+        unchangedStatistics,
+      );
+      const logged: string[] = [];
+      const results = await syncAllLayers(
+        { ...dependencies(secondRun), log: (message) => logged.push(message) },
+        [trackedRoads],
+      );
+
+      expect(downloads).toEqual([]);
+      expect(await featureState()).toEqual(featuresBefore);
+      expect(iso((await layerState()).last_synced_at)).toBe(secondRun.toISOString());
+      expect(results[0]).toMatchObject({
+        unchanged: true,
+        fetched: 0,
+        upserted: 0,
+        deleted: 0,
+      });
+      expect(logged).toContain(
+        `Skipped Roads: unchanged, source last edited ${edited}, last synced ${firstRun.toISOString()}`,
+      );
+      expect(
+        logged.some((message) => message.includes(roadsUrl) && message.includes("unchanged")),
+      ).toBe(true);
+    });
+
+    it("downloads in full and stores the new fingerprint when the source changed", async () => {
+      arcgis({ [roadsUrl]: [geoJsonFeature(1), geoJsonFeature(2)] }, unchangedStatistics);
+      await syncAllLayers(dependencies(firstRun), [trackedRoads]);
+
+      const newEdit = "2026-01-10T09:00:00.000Z";
+      const { downloads } = arcgis(
+        { [roadsUrl]: [geoJsonFeature(2, line, { NAME: "renamed" }), geoJsonFeature(3)] },
+        { [roadsUrl]: { count: 2, latestEdit: newEdit } },
+      );
+      const results = await syncAllLayers(dependencies(secondRun), [trackedRoads]);
+
+      expect(downloads).toEqual([roadsUrl]);
+      expect(results[0]).toMatchObject({ unchanged: false, upserted: 2, deleted: 1 });
+      expect((await featureState()).map((row) => [row.source_feature_id, row.name])).toEqual([
+        ["2", "renamed"],
+        ["3", "feature 3"],
+      ]);
+      const layer = await layerState();
+      expect(layer.source_feature_count).toBe(2);
+      expect(iso(layer.source_last_edited_at)).toBe(newEdit);
+      expect(iso(layer.last_synced_at)).toBe(secondRun.toISOString());
+    });
+
+    it("falls back to a full sync, without failing the layer, when statistics are unsupported", async () => {
+      arcgis({ [roadsUrl]: [geoJsonFeature(1), geoJsonFeature(2)] }, unchangedStatistics);
+      await syncAllLayers(dependencies(firstRun), [trackedRoads]);
+
+      const { downloads } = arcgis({ [roadsUrl]: [geoJsonFeature(1), geoJsonFeature(2)] });
+      const logged: string[] = [];
+      const results = await syncAllLayers(
+        { ...dependencies(secondRun), log: (message) => logged.push(message) },
+        [trackedRoads],
+      );
+
+      expect(downloads).toEqual([roadsUrl]);
+      expect(results[0]!.error).toBeUndefined();
+      expect(logged.join("\n")).toContain("Unsupported operation");
+      // The new source state is unknown, so no stale fingerprint may be left behind.
+      const layer = await layerState();
+      expect(layer.source_feature_count).toBeNull();
+      expect(layer.source_last_edited_at).toBeNull();
+    });
+
+    it("does not save a fingerprint when the layer fails, so the next run downloads again", async () => {
+      arcgis({ [roadsUrl]: new Error("service down") }, unchangedStatistics);
+      await expect(syncAllLayers(dependencies(firstRun), [trackedRoads])).rejects.toThrow(roadsUrl);
+      const failed = await layerState();
+      expect(failed.source_feature_count).toBeNull();
+      expect(failed.source_last_edited_at).toBeNull();
+
+      const { downloads } = arcgis({ [roadsUrl]: [geoJsonFeature(1)] }, unchangedStatistics);
+      await syncAllLayers(dependencies(secondRun), [trackedRoads]);
+      expect(downloads).toEqual([roadsUrl]);
+    });
+
+    it("keeps the previous fingerprint when a changed layer then fails", async () => {
+      arcgis({ [roadsUrl]: [geoJsonFeature(1), geoJsonFeature(2)] }, unchangedStatistics);
+      await syncAllLayers(dependencies(firstRun), [trackedRoads]);
+
+      arcgis(
+        { [roadsUrl]: new Error("service down") },
+        { [roadsUrl]: { count: 5, latestEdit: "2026-01-10T09:00:00.000Z" } },
+      );
+      await expect(syncAllLayers(dependencies(secondRun), [trackedRoads])).rejects.toThrow(
+        roadsUrl,
+      );
+      const layer = await layerState();
+      expect(layer.source_feature_count).toBe(2);
+      expect(iso(layer.source_last_edited_at)).toBe(edited);
+      expect(iso(layer.last_synced_at)).toBe(firstRun.toISOString());
+    });
+
+    it("never asks a layer without an edit-date field for statistics", async () => {
+      const { requested } = arcgis({ [roadsUrl]: [geoJsonFeature(1)] });
+      await syncAllLayers(dependencies(firstRun), [roads]);
+      await syncAllLayers(dependencies(secondRun), [roads]);
+      const layer = await layerState();
+      expect(layer.source_feature_count).toBeNull();
+      expect(requested.filter((url) => url === roadsUrl).length).toBeGreaterThan(2);
+    });
   });
 
   describe("bootstrap", () => {

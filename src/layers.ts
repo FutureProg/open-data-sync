@@ -21,6 +21,12 @@ export interface LayerConfig {
   name: string;
   /** ArcGIS layer URL ending in /MapServer/N or /FeatureServer/N, or `TODO`. */
   url: string;
+  /**
+   * Name of the layer's last-edited date field. When set, the sync first asks the
+   * source for its feature count and latest edit date, and skips the download if
+   * both match what the previous sync stored. Leave unset to always fetch in full.
+   */
+  editDateField?: string;
 }
 
 export const LAYERS: readonly LayerConfig[] = [
@@ -41,6 +47,7 @@ export const LAYERS: readonly LayerConfig[] = [
     dataGroup: "road_segments",
     name: "Burlington road segments",
     url: "https://mapping.burlington.ca/arcgisweb/rest/services/COB/Road_Segments/MapServer/0",
+    editDateField: "LAST_EDITED_DATE",
   },
   {
     town: "Burlington",
@@ -53,12 +60,14 @@ export const LAYERS: readonly LayerConfig[] = [
     dataGroup: "road_segments",
     name: "Oakville road network",
     url: "https://maps.oakville.ca/oakgis/rest/services/SBS/Road_Segments/FeatureServer/21",
+    editDateField: "last_edited_date",
   },
   {
     town: "Burlington",
     dataGroup: "ward_boundaries",
     name: "Burlington wards",
     url: "https://mapping.burlington.ca/arcgisweb/rest/services/COB/WardBoundaries/MapServer/0",
+    editDateField: "LAST_EDITED_DATE",
   },
   {
     town: "Oakville",
@@ -77,6 +86,7 @@ export const LAYERS: readonly LayerConfig[] = [
     dataGroup: "road_segments",
     name: "Milton road segments",
     url: "https://api.milton.ca/arcgis/rest/services/Datasets/Roads/MapServer/0",
+    editDateField: "EDIT_DATE",
   },
 ];
 
