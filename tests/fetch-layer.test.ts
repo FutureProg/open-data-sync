@@ -73,6 +73,62 @@ describe("fetchLayerFeatures", () => {
     expect(offsets).toEqual(["0", "2", "4"]);
   });
 
+  describe("paging without a top-level exceededTransferLimit", () => {
+    /** Serves pages of size 2, putting the "more data" flag where `placeFlag` says (or nowhere). */
+    function layerWithFlag(placeFlag: ((more: boolean) => object) | undefined) {
+      const pages = [[feature(1), feature(2)], [feature(3), feature(4)], [feature(5)]];
+      return fakeFetch((url) => {
+        if (!url.pathname.endsWith("/query")) return { maxRecordCount: 2 };
+        const index = Number(url.searchParams.get("resultOffset")) / 2;
+        const more = index < pages.length - 1;
+        return {
+          type: "FeatureCollection",
+          features: pages[index] ?? [],
+          ...placeFlag?.(more),
+        };
+      });
+    }
+    const ids = (result: { features: { sourceFeatureId: string }[] }) =>
+      result.features.map((f) => f.sourceFeatureId);
+
+    it("keeps paging when the flag is only inside top-level properties", async () => {
+      const { fetchFunction } = layerWithFlag((more) => ({
+        properties: { exceededTransferLimit: more },
+      }));
+      expect(ids(await fetchLayerFeatures(layerUrl, { fetchFunction }))).toEqual([
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+      ]);
+    });
+
+    it("keeps paging when the flag is at the top level", async () => {
+      const { fetchFunction } = layerWithFlag((more) => ({ exceededTransferLimit: more }));
+      expect(ids(await fetchLayerFeatures(layerUrl, { fetchFunction }))).toHaveLength(5);
+    });
+
+    it("keeps paging after a full page even when no flag is present anywhere", async () => {
+      const { fetchFunction } = layerWithFlag(undefined);
+      expect(ids(await fetchLayerFeatures(layerUrl, { fetchFunction }))).toHaveLength(5);
+    });
+
+    it("stops after a full page followed by an empty page when no flag is present", async () => {
+      const { fetchFunction, requested } = fakeFetch((url) =>
+        url.pathname.endsWith("/query")
+          ? {
+              features:
+                url.searchParams.get("resultOffset") === "0" ? [feature(1), feature(2)] : [],
+            }
+          : { maxRecordCount: 2 },
+      );
+      const result = await fetchLayerFeatures(layerUrl, { fetchFunction });
+      expect(result.features).toHaveLength(2);
+      expect(requested.filter((url) => url.pathname.endsWith("/query"))).toHaveLength(2);
+    });
+  });
+
   it("uses the layer's maxRecordCount as the page size", async () => {
     const { fetchFunction, requested } = pagedLayer([[feature(1)]], { maxRecordCount: 250 });
     await fetchLayerFeatures(layerUrl, { fetchFunction });

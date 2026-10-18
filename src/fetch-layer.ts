@@ -60,6 +60,11 @@ async function readPageSize(fetchFunction: typeof fetch, layerUrl: string): Prom
   return DEFAULT_PAGE_SIZE;
 }
 
+function reportsMoreData(page: Record<string, unknown>): boolean {
+  const properties = page.properties as Record<string, unknown> | null | undefined;
+  return page.exceededTransferLimit === true || properties?.exceededTransferLimit === true;
+}
+
 function extractId(feature: GeoJsonFeature): string | undefined {
   const candidates = [feature.id, ...ID_PROPERTY_NAMES.map((name) => feature.properties?.[name])];
   for (const candidate of candidates) {
@@ -107,7 +112,10 @@ export async function fetchLayerFeatures(
       });
     }
 
-    if (pageFeatures.length === 0 || page.exceededTransferLimit !== true) break;
+    // Servers report "more data" at the top level, inside `properties`, both or
+    // neither, so a full page also counts: a missing flag must never truncate.
+    const hasMore = reportsMoreData(page) || pageFeatures.length >= pageSize;
+    if (pageFeatures.length === 0 || !hasMore) break;
   }
 
   return { features: [...featuresById.values()], skippedWithoutId };
