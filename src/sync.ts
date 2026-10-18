@@ -3,6 +3,7 @@ import { fetchLayerFeatures } from "./fetch-layer";
 import { LAYERS, type LayerConfig } from "./layers";
 import {
   bootstrapLayers,
+  countStoredFeatures,
   listEnabledLayers,
   writeLayerFeatures,
   type StoredLayer,
@@ -41,6 +42,16 @@ async function syncLayer(
     });
     result.fetched = features.length + skippedWithoutId;
     result.skipped = skippedWithoutId;
+    if (features.length === 0) {
+      // An empty answer for a populated layer is more likely an outage than a real
+      // deletion of everything, so keep the rows and fail the layer.
+      const existing = await countStoredFeatures(dependencies.database, layer.id);
+      if (existing > 0) {
+        throw new Error(
+          `${layer.name ?? layer.serviceUrl} returned 0 features but ${existing} rows exist; nothing was changed`,
+        );
+      }
+    }
     const written = await writeLayerFeatures(
       dependencies.database,
       layer,

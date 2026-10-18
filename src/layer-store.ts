@@ -1,4 +1,4 @@
-import { and, eq, ne, sql } from "drizzle-orm";
+import { and, count, eq, ne, sql } from "drizzle-orm";
 import { arcgisRawFeatures, arcgisRawLayers } from "../db/schema";
 import type { Database } from "./db";
 import { isResolved, type LayerConfig } from "./layers";
@@ -57,6 +57,14 @@ export async function listEnabledLayers(database: Database): Promise<StoredLayer
     .from(arcgisRawLayers)
     .where(eq(arcgisRawLayers.enabled, true))
     .orderBy(arcgisRawLayers.id);
+}
+
+export async function countStoredFeatures(database: Database, layerId: number): Promise<number> {
+  const [row] = await database
+    .select({ total: count() })
+    .from(arcgisRawFeatures)
+    .where(eq(arcgisRawFeatures.layerId, layerId));
+  return row?.total ?? 0;
 }
 
 /**

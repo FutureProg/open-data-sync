@@ -15,7 +15,7 @@ See [CONTEXT.md](./CONTEXT.md) for the vocabulary used here.
 
 1. Upsert `LAYERS` into `arcgis_raw_layers`, then load the enabled layers.
 2. Per layer, page through `<layer>/query?where=1=1&outFields=*&outSR=4326&f=geojson` using `resultOffset`/`resultRecordCount` (page size is the layer's `maxRecordCount`, default 1000). An HTTP 200 with a JSON `error` body counts as a failure. A feature's id is `feature.id`, else `OBJECTID`/`objectid`/`FID`; features with no id are skipped and counted.
-3. Only if the whole fetch succeeded, in one transaction: upsert features in batches (geometry via `ST_SetSRID(ST_GeomFromGeoJSON(...), 4326)`), delete rows of that layer not seen in this run, and set `last_synced_at`.
+3. Only if the whole fetch succeeded, in one transaction: upsert features in batches (geometry via `ST_SetSRID(ST_GeomFromGeoJSON(...), 4326)`), delete rows of that layer not seen in this run, and set `last_synced_at`. If a layer that already has stored rows comes back with zero features, that layer is treated as failed: nothing is deleted or written and `last_synced_at` is unchanged (an empty layer with no stored rows is fine).
 4. A failing layer does not stop the others. A per-layer summary is logged and the run fails at the end if any layer failed.
 
 ## Tables

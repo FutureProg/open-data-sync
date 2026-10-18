@@ -157,6 +157,41 @@ describe.skipIf(!dockerAvailable)("sync against PostGIS", () => {
     ]);
   });
 
+  it("fails a populated layer that suddenly returns zero features, keeping its rows", async () => {
+    const healthy = arcgis({ [roadsUrl]: [geoJsonFeature(1)], [wardsUrl]: [geoJsonFeature(10)] });
+    await syncAllLayers(dependencies(healthy.fetchFunction), [roads, wards]);
+
+    const later = new Date("2026-01-12T06:00:00Z");
+    const emptied = arcgis({ [roadsUrl]: [], [wardsUrl]: [geoJsonFeature(11)] });
+    const logged: string[] = [];
+    await expect(
+      syncAllLayers({ ...dependencies(emptied.fetchFunction, later), log: (m) => logged.push(m) }, [
+        roads,
+        wards,
+      ]),
+    ).rejects.toThrow(roadsUrl);
+
+    expect(logged.join("\n")).toContain("returned 0 features but 1 rows exist");
+    const stored = await rows(sql`
+      SELECT l.service_url, f.source_feature_id, l.last_synced_at
+      FROM open_data_sync.arcgis_raw_features f
+      JOIN open_data_sync.arcgis_raw_layers l ON l.id = f.layer_id ORDER BY f.source_feature_id`);
+    expect(stored.map((r) => [r.service_url, r.source_feature_id])).toEqual([
+      [roadsUrl, "1"],
+      [wardsUrl, "11"],
+    ]);
+    expect(new Date(stored[0]!.last_synced_at as string).toISOString()).toBe(
+      "2026-01-05T06:00:00.000Z",
+    );
+  });
+
+  it("does not fail an empty layer that has no stored rows", async () => {
+    const { fetchFunction } = arcgis({ [roadsUrl]: [] });
+    const results = await syncAllLayers(dependencies(fetchFunction), [roads]);
+    expect(results[0]).toMatchObject({ fetched: 0, upserted: 0, deleted: 0 });
+    expect(results[0]!.error).toBeUndefined();
+  });
+
   it("skips unresolved layers and never fetches or re-enables disabled ones", async () => {
     await bootstrapLayers(testDatabase.database, [roads, wards]);
     await testDatabase.database.execute(
