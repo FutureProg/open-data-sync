@@ -2,14 +2,22 @@
 
 A small Cloudflare Worker, built with [Void](https://void.cloud), that syncs public municipal ArcGIS map layers (Burlington, Oakville, Milton and Halton Hills) into an existing DigitalOcean PostgreSQL database with PostGIS, every week.
 
-**Status: scaffold only.** The ArcGIS fetching, upserts and geometry conversion are stubs that throw `Not implemented`. See [CONTEXT.md](./CONTEXT.md) for the vocabulary used here.
+See [CONTEXT.md](./CONTEXT.md) for the vocabulary used here.
 
 ## What it does
 
-- A weekly cron (`crons/sync-arcgis-layers.ts`, Mondays at 06:00 UTC) calls `syncAllLayers(env)`.
+- A weekly cron (`crons/sync-arcgis-layers.ts`, Mondays at 06:00 UTC) connects to Postgres and calls `syncAllLayers`.
 - The layers to sync are listed in `src/layers.ts`.
 - Data lands in the `open_data_sync` schema, via Drizzle ORM, over a direct Postgres connection (no Hyperdrive).
 - Deployed straight to your own Cloudflare account with the Void CLI (not the Void platform).
+
+## How a sync works
+
+1. Upsert `LAYERS` into `arcgis_raw_layers` (a row is only updated if its town, data group or name changed), then load the enabled layers.
+2. Per layer with an `editDateField` (see below), first ask the source for a fingerprint with one `queryFeatures` statistics query (`where=1=1`, `outStatistics`: count and max of the edit-date field). If it equals the fingerprint stored by the last successful sync, the layer is skipped: nothing is downloaded and no feature row is touched, only `last_synced_at` moves, and the run logs e.g. `Skipped Burlington road segments: unchanged, source last edited 2026-09-30T14:05:00.000Z, last synced 2026-10-11T06:00:00.000Z` (the per-layer summary marks it `SKIPPED (unchanged)`). If the statistics query fails or is unsupported, that is logged and the layer is fetched in full as usual; it is not a layer failure. There is no periodic forced full sync: the edit dates are trusted. Layers without an `editDateField` are always fetched in full.
+3. Otherwise fetch GeoJSON in WGS84 with the Esri `@esri/arcgis-rest-feature-service` `queryAllFeatures` helper (pages by the layer's `maxRecordCount`, understands `exceededTransferLimit` at the top level or in `properties`, throws on HTTP errors and on HTTP 200 `error` bodies). Because the helper stops when the flag is missing, the received count is checked against the layer's own `returnCountOnly` count and a shortfall fails the layer. A feature's id is `feature.id`, else `OBJECTID`/`objectid`/`FID`; features with no id are skipped and counted.
+4. Only if the whole fetch succeeded, in one transaction: upsert features in batches (geometry via `ST_SetSRID(ST_GeomFromGeoJSON(...), 4326)`; `synced_at` always moves, while `attributes`, `data_group` and `geometry` only change when the value differs), delete rows of that layer not seen in this run, set `last_synced_at` and save the new fingerprint (cleared when it could not be read). A failed layer never saves one. If a layer that already has stored rows comes back with zero features, that layer is treated as failed: nothing is deleted or written and `last_synced_at` is unchanged (an empty layer with no stored rows is fine).
+5. A failing layer does not stop the others. A per-layer summary is logged and the run fails at the end if any layer failed.
 
 ## Tables
 
@@ -17,16 +25,18 @@ Both tables live in the `open_data_sync` schema (`db/schema.ts`).
 
 `arcgis_raw_layers`
 
-| Column                     | Type                   | Notes                                                           |
-| -------------------------- | ---------------------- | --------------------------------------------------------------- |
-| `id`                       | bigserial, pk          |                                                                 |
-| `town`                     | text, not null         | Burlington, Oakville, Milton or Halton Hills                    |
-| `data_group`               | text, not null         | e.g. `ward_boundaries`, `road_segments`, `intersections`        |
-| `name`                     | text                   |                                                                 |
-| `service_url`              | text, not null, unique | ArcGIS layer URL ending in `/MapServer/N` or `/FeatureServer/N` |
-| `enabled`                  | boolean, default true  |                                                                 |
-| `last_synced_at`           | timestamptz, null      |                                                                 |
-| `created_at`, `updated_at` | timestamptz            |                                                                 |
+| Column                     | Type                   | Notes                                                                   |
+| -------------------------- | ---------------------- | ----------------------------------------------------------------------- |
+| `id`                       | bigserial, pk          |                                                                         |
+| `town`                     | text, not null         | Burlington, Oakville, Milton or Halton Hills                            |
+| `data_group`               | text, not null         | e.g. `ward_boundaries`, `road_segments`, `intersections`                |
+| `name`                     | text                   |                                                                         |
+| `service_url`              | text, not null, unique | ArcGIS layer URL ending in `/MapServer/N` or `/FeatureServer/N`         |
+| `enabled`                  | boolean, default true  |                                                                         |
+| `last_synced_at`           | timestamptz, null      | moves on every run, including skipped ones                              |
+| `source_feature_count`     | integer, null          | fingerprint saved by the last full sync of a layer with `editDateField` |
+| `source_last_edited_at`    | timestamptz, null      | latest edit date in the source at that time                             |
+| `created_at`, `updated_at` | timestamptz            |                                                                         |
 
 `arcgis_raw_features`
 
@@ -45,9 +55,10 @@ Unique on (`layer_id`, `source_feature_id`). Indexes: btree on `data_group`, btr
 ## Adding a layer
 
 1. Add an entry to `LAYERS` in `src/layers.ts` with `town`, `dataGroup`, `name` and the layer `url` (use `TODO` and a comment if the URL is not resolved yet).
+   Optionally set `editDateField` to the layer's last-edited date field (check the layer metadata) to skip downloads while the source is unchanged. The feature count in the fingerprint counts non-null values of that field.
 2. If it needs a new data group, add it to `DATA_GROUPS` in the same file.
 3. Run `pnpm exec vp test run` (URLs must be unique and values valid).
-4. A bootstrap step (not yet written) upserts `LAYERS` into `arcgis_raw_layers`.
+4. On the next run the sync upserts `LAYERS` into `arcgis_raw_layers` (keyed on `service_url`; an existing row keeps its `enabled` flag). Layers with a `TODO` URL are skipped.
 
 ## Environment variables
 
@@ -70,12 +81,14 @@ Void requires Node 24.21 or newer. The project uses pnpm and [Vite+](https://vit
 pnpm install
 cp example.env .env        # then fill in DATABASE_URL and DB_CA_CERT
 pnpm exec vp dev           # or: pnpm dev
-pnpm exec vp test run      # unit tests (no database needed)
+pnpm test                  # unit tests, plus PostGIS integration tests when Docker is running
 pnpm exec vp check         # format, lint, type check
 pnpm typecheck             # tsc
 pnpm db:generate           # generate a migration after editing db/schema.ts
 pnpm db:migrate            # apply migrations by hand (needs DATABASE_URL and DB_CA_CERT)
 ```
+
+The integration tests (`tests/integration`) start a throwaway `postgis/postgis` container with Testcontainers, create the schema and extension in test setup, and apply the real migrations. They are skipped with a warning when Docker is not available.
 
 Schedules do not fire locally. Trigger one with the dev token Void prints at start-up:
 

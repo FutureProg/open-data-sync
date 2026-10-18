@@ -1,0 +1,236 @@
+{
+  "id": "9906d64d-dd76-4151-9da5-be4f38baa7c5",
+  "prevId": "3d7ce789-b9e6-4237-824d-d4a699d453a3",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "open_data_sync.arcgis_raw_features": {
+      "name": "arcgis_raw_features",
+      "schema": "open_data_sync",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "bigserial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "layer_id": {
+          "name": "layer_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "data_group": {
+          "name": "data_group",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "source_feature_id": {
+          "name": "source_feature_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "attributes": {
+          "name": "attributes",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "geometry": {
+          "name": "geometry",
+          "type": "geometry(Geometry,4326)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "synced_at": {
+          "name": "synced_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "arcgis_raw_features_data_group_idx": {
+          "name": "arcgis_raw_features_data_group_idx",
+          "columns": [
+            {
+              "expression": "data_group",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "arcgis_raw_features_layer_id_idx": {
+          "name": "arcgis_raw_features_layer_id_idx",
+          "columns": [
+            {
+              "expression": "layer_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "arcgis_raw_features_geometry_gist": {
+          "name": "arcgis_raw_features_geometry_gist",
+          "columns": [
+            {
+              "expression": "geometry",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "gist",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "arcgis_raw_features_layer_id_arcgis_raw_layers_id_fk": {
+          "name": "arcgis_raw_features_layer_id_arcgis_raw_layers_id_fk",
+          "tableFrom": "arcgis_raw_features",
+          "tableTo": "arcgis_raw_layers",
+          "schemaTo": "open_data_sync",
+          "columnsFrom": [
+            "layer_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "arcgis_raw_features_layer_source_uq": {
+          "name": "arcgis_raw_features_layer_source_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "layer_id",
+            "source_feature_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "open_data_sync.arcgis_raw_layers": {
+      "name": "arcgis_raw_layers",
+      "schema": "open_data_sync",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "bigserial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "town": {
+          "name": "town",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "data_group": {
+          "name": "data_group",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "service_url": {
+          "name": "service_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "enabled": {
+          "name": "enabled",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "last_synced_at": {
+          "name": "last_synced_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "source_feature_count": {
+          "name": "source_feature_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "source_last_edited_at": {
+          "name": "source_last_edited_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "arcgis_raw_layers_service_url_unique": {
+          "name": "arcgis_raw_layers_service_url_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "service_url"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {},
+  "schemas": {
+    "open_data_sync": "open_data_sync"
+  },
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

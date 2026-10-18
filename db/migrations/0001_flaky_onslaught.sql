@@ -1,0 +1,2 @@
+ALTER TABLE "open_data_sync"."arcgis_raw_layers" ADD COLUMN "source_feature_count" integer;--> statement-breakpoint
+ALTER TABLE "open_data_sync"."arcgis_raw_layers" ADD COLUMN "source_last_edited_at" timestamp with time zone;
