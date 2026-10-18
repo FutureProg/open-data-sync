@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { arcgisRawFeatures } from "../db/schema";
+import { arcgisRawFeatures } from "../drizzle/schema";
 import type { Database } from "./db";
 import type { ArcgisFeature } from "./types";
 

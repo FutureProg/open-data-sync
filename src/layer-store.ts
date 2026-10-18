@@ -1,5 +1,5 @@
 import { and, count, eq, ne, sql } from "drizzle-orm";
-import { arcgisRawFeatures, arcgisRawLayers } from "../db/schema";
+import { arcgisRawFeatures, arcgisRawLayers } from "../drizzle/schema";
 import type { Database } from "./db";
 import type { SourceFingerprint } from "./fingerprint";
 import { isResolved, type LayerConfig } from "./layers";

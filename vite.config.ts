@@ -14,6 +14,6 @@ export default defineConfig({
     include: ["tests/**/*.test.ts"],
   },
   fmt: {
-    ignorePatterns: ["db/migrations", ".void", "dist"],
+    ignorePatterns: ["drizzle/migrations", ".void", "dist"],
   },
 });

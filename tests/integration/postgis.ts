@@ -3,7 +3,7 @@ import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { PostgreSqlContainer } from "@testcontainers/postgresql";
 import { Pool } from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
-import * as schema from "../../db/schema";
+import * as schema from "../../drizzle/schema";
 import type { Database } from "../../src/db";
 
 export function isDockerAvailable(): boolean {
@@ -33,7 +33,7 @@ export async function startTestDatabase(): Promise<TestDatabase> {
   await pool.query("CREATE SCHEMA IF NOT EXISTS open_data_sync");
   const database = drizzle(pool, { schema });
   await migrate(database, {
-    migrationsFolder: "db/migrations",
+    migrationsFolder: "drizzle/migrations",
     migrationsSchema: "open_data_sync",
     migrationsTable: "__drizzle_migrations",
   });

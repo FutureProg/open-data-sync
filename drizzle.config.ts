@@ -6,8 +6,8 @@ const dbUrl = new URL(process.env.DATABASE_URL ?? "postgresql://invalid");
 
 export default defineConfig({
   dialect: "postgresql",
-  schema: "./db/schema.ts",
-  out: "./db/migrations",
+  schema: "./drizzle/schema.ts",
+  out: "./drizzle/migrations",
   // Only ever look at our own schema; the database is shared with other apps.
   schemaFilter: ["open_data_sync"],
   // Keep drizzle's bookkeeping table inside open_data_sync too.

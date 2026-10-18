@@ -21,7 +21,7 @@ See [CONTEXT.md](./CONTEXT.md) for the vocabulary used here.
 
 ## Tables
 
-Both tables live in the `open_data_sync` schema (`db/schema.ts`).
+Both tables live in the `open_data_sync` schema (`drizzle/schema.ts`).
 
 `arcgis_raw_layers`
 
@@ -84,7 +84,7 @@ pnpm exec vp dev           # or: pnpm dev
 pnpm test                  # unit tests, plus PostGIS integration tests when Docker is running
 pnpm exec vp check         # format, lint, type check
 pnpm typecheck             # tsc
-pnpm db:generate           # generate a migration after editing db/schema.ts
+pnpm db:generate           # generate a migration after editing drizzle/schema.ts
 pnpm db:migrate            # apply migrations by hand (needs DATABASE_URL and DB_CA_CERT)
 ```
 
