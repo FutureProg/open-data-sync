@@ -52,37 +52,31 @@ export const LAYERS: readonly LayerConfig[] = [
     town: "Oakville",
     dataGroup: "road_segments",
     name: "Oakville road network",
-    // TODO: layer index unknown. Base service:
-    // https://maps.oakville.ca/oakgis/rest/services/SBS/Road_Segments/FeatureServer
-    url: TODO_URL,
+    url: "https://maps.oakville.ca/oakgis/rest/services/SBS/Road_Segments/FeatureServer/21",
   },
   {
     town: "Burlington",
     dataGroup: "ward_boundaries",
     name: "Burlington wards",
-    // TODO: resolve service URL. ArcGIS Hub item 73bee9ff196141a2a1e45be8c04ae404
-    url: TODO_URL,
+    url: "https://mapping.burlington.ca/arcgisweb/rest/services/COB/WardBoundaries/MapServer/0",
   },
   {
     town: "Oakville",
     dataGroup: "ward_boundaries",
     name: "Oakville wards",
-    // TODO: resolve service URL. ArcGIS Hub item 06e1062918f043258ebcada195527120
-    url: TODO_URL,
+    url: "https://services5.arcgis.com/QJebCdoMf4PF8fJP/arcgis/rest/services/Wards/FeatureServer/0",
   },
   {
     town: "Milton",
     dataGroup: "ward_boundaries",
     name: "Milton wards",
-    // TODO: resolve service URL. ArcGIS Hub item 33fd808004c449afba2bc80587ac2889
-    url: TODO_URL,
+    url: "https://api.milton.ca/arcgis/rest/services/Datasets/Wards/MapServer/0",
   },
   {
     town: "Milton",
     dataGroup: "road_segments",
     name: "Milton road segments",
-    // TODO: resolve service URL. ArcGIS Hub item 035fd4a9a3684bf5b6db2e9d36a4d3b1
-    url: TODO_URL,
+    url: "https://api.milton.ca/arcgis/rest/services/Datasets/Roads/MapServer/0",
   },
 ];
 
