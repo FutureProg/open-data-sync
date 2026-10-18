@@ -45,12 +45,16 @@ type FlagPlacement = "top-level" | "properties" | "both" | "none";
 /** Serves metadata, a feature count, and pages of the given features. */
 function pagedLayer(
   pages: unknown[][],
-  { metadata = { maxRecordCount: 2 }, flag = "top-level" as FlagPlacement } = {},
+  {
+    metadata = { maxRecordCount: 2 },
+    flag = "top-level" as FlagPlacement,
+    count = undefined as number | undefined,
+  } = {},
 ) {
   const total = pages.reduce((sum, page) => sum + page.length, 0);
   return fakeServer((url) => {
     if (!isQuery(url)) return metadata;
-    if (isCountQuery(url)) return { count: total };
+    if (isCountQuery(url)) return { count: count ?? total };
     const offset = Number(url.searchParams.get("resultOffset") ?? 0);
     const size = Number(url.searchParams.get("resultRecordCount"));
     const pageIndex = Math.floor(offset / size);
@@ -200,8 +204,21 @@ describe("fetchLayerFeatures", () => {
     });
 
     it("keeps one feature per id when paging returns a duplicate", async () => {
-      pagedLayer([[feature(1), feature(2)], [feature(2)]]);
+      pagedLayer([[feature(1), feature(2)], [feature(2)]], { count: 2 });
       expect(ids(await fetchLayerFeatures(layerUrl))).toEqual(["1", "2"]);
+    });
+
+    it("fails when duplicates across pages hide a missing id", async () => {
+      // The service has 3 features, but paging returned id 2 twice and never id 3.
+      pagedLayer([[feature(1), feature(2)], [feature(2)]], { count: 3 });
+      await expect(fetchLayerFeatures(layerUrl)).rejects.toThrow(/3 features.*only 2/);
+    });
+
+    it("counts skipped idless features towards completeness exactly once", async () => {
+      pagedLayer([[feature(1), feature(undefined, { NAME: "no id" })]], { count: 2 });
+      const result = await fetchLayerFeatures(layerUrl);
+      expect(ids(result)).toEqual(["1"]);
+      expect(result.skippedWithoutId).toBe(1);
     });
   });
 

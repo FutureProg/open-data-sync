@@ -33,22 +33,12 @@ function extractId(feature: GeoJsonFeature): string | undefined {
  * `queryAllFeatures` helper. The Esri client always uses the global `fetch`.
  *
  * The helper stops when the flag is missing, so a server that never sets it
- * would be truncated silently. To rule that out, the number of features
+ * would be truncated silently. To rule that out, the number of distinct features
  * received is checked against the layer's own count, and a shortfall throws.
  */
 export async function fetchLayerFeatures(layerUrl: string): Promise<FetchedLayer> {
   const response = await queryAllFeatures({ url: layerUrl, f: "geojson", outSR: "4326" });
   const received = response.features as unknown as GeoJsonFeature[];
-
-  const { count } = (await queryFeatures({
-    url: layerUrl,
-    returnCountOnly: true,
-  })) as { count?: number };
-  if (typeof count === "number" && received.length < count) {
-    throw new Error(
-      `${layerUrl} reports ${count} features but only ${received.length} were returned`,
-    );
-  }
 
   const featuresById = new Map<string, ArcgisFeature>();
   let skippedWithoutId = 0;
@@ -64,5 +54,19 @@ export async function fetchLayerFeatures(layerUrl: string): Promise<FetchedLayer
       geometry: feature.geometry ?? null,
     });
   }
+
+  // Compare distinct ids (plus idless features, which cannot be deduplicated)
+  // rather than raw rows, so duplicates across pages cannot hide a missing id.
+  const { count } = (await queryFeatures({
+    url: layerUrl,
+    returnCountOnly: true,
+  })) as { count?: number };
+  const distinctReceived = featuresById.size + skippedWithoutId;
+  if (typeof count === "number" && distinctReceived < count) {
+    throw new Error(
+      `${layerUrl} reports ${count} features but only ${distinctReceived} distinct ones were returned`,
+    );
+  }
+
   return { features: [...featuresById.values()], skippedWithoutId };
 }
