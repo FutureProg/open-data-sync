@@ -1,10 +1,6 @@
-import { defineEnv, string, url } from "void/env";
+import { defineEnv } from "void/env";
 
-export default defineEnv({
-  // Connection string for the DigitalOcean PostgreSQL database (PostGIS enabled).
-  // Local: set in .env. Production: `void secret put DATABASE_URL`.
-  DATABASE_URL: url(),
-  // CA certificate (PEM) of the database, used to verify its TLS connection.
-  // Local: set in .env. Production: `void secret put DB_CA_CERT`.
-  DB_CA_CERT: string(),
-});
+// No server values: the Worker reaches Postgres through the HYPERDRIVE binding
+// (see void.config.ts). DATABASE_URL / DB_CA_CERT in .env are only for
+// drizzle-kit (`pnpm db:migrate`) and are never deployed.
+export default defineEnv({});
