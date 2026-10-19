@@ -11,7 +11,12 @@ export default defineConfig({
   },
   cloudflare: {
     name: "open-data-sync",
-    hyperdrive: [{ binding: "HYPERDRIVE", id: "19ea5aa02771494897c2cf7998977211" }],
+    hyperdrive: [
+      {
+        binding: "HYPERDRIVE",
+        id: process.env.CLOUDFLARE_HYPERDRIVE_ID,
+      },
+    ],
     preview_urls: true,
     workers_dev: true,
   },

@@ -99,6 +99,8 @@ curl -X POST http://localhost:5173/__void/scheduled \
   -d '{"cron":"0 6 * * 1","scheduledTime":'"$(date +%s000)"'}'
 ```
 
+To run the sync once by hand, for example after a missed cron, use `pnpm sync:once`. It runs in plain Node and connects to the database in `.env` (`DATABASE_URL`, with `DB_CA_CERT` for verified TLS), so it writes to that database. Leave `DB_CA_CERT` empty to use a local, non-TLS Postgres. It must not run inside workerd (`vp dev`), which cannot verify the DigitalOcean CA.
+
 ## Deploy
 
 ```sh
