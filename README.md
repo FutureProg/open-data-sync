@@ -119,7 +119,7 @@ Put the returned config ID in `cloudflare.hyperdrive` in `void.config.ts`. Commi
 
 ## Notes
 
-- **Migrations are manual.** Void's database layer is not used, so `void deploy` does not touch the database. Run `pnpm db:migrate` (drizzle-kit) yourself; it records progress in `open_data_sync.__drizzle_migrations`, so nothing is written outside the schema. The migration does not run `CREATE SCHEMA` or `CREATE EXTENSION`.
+- **Migrations are manual.** Void's database layer is not used, so `void deploy` does not touch the database. Run `pnpm db:migrate` (drizzle-kit) yourself; it records progress in `open_data_sync.__drizzle_migrations`, so nothing is written outside the schema. The migration SQL does not run `CREATE SCHEMA` or `CREATE EXTENSION`, but drizzle's migrator runs `CREATE SCHEMA IF NOT EXISTS open_data_sync` for its tracking table, which Postgres refuses without `CREATE` on the database. Grant it once: `GRANT CREATE ON DATABASE <db> TO "<role>";`.
 - **The `open_data_sync` schema must already exist**, and the role must be able to create tables in it.
 - **PostGIS must be enabled** in the database (the owner says it already is). Migrations rely on it but never enable it.
 - **DigitalOcean trusted sources** may need to allow Cloudflare, since Workers have no fixed outgoing IP. Verify this against your database settings.
