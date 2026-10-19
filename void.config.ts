@@ -14,7 +14,7 @@ export default defineConfig({
     hyperdrive: [
       {
         binding: "HYPERDRIVE",
-        id: process.env.CLOUDFLARE_HYPERDRIVE_ID,
+        id: "19ea5aa02771494897c2cf7998977211",
       },
     ],
     preview_urls: true,
