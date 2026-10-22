@@ -7,9 +7,12 @@ import {
   integer,
   jsonb,
   pgSchema,
+  primaryKey,
+  real,
   text,
   timestamp,
   unique,
+  varchar,
 } from "drizzle-orm/pg-core";
 
 /**
@@ -82,3 +85,61 @@ export type ArcgisRawLayer = typeof arcgisRawLayers.$inferSelect;
 export type NewArcgisRawLayer = typeof arcgisRawLayers.$inferInsert;
 export type ArcgisRawFeature = typeof arcgisRawFeatures.$inferSelect;
 export type NewArcgisRawFeature = typeof arcgisRawFeatures.$inferInsert;
+
+/** PostGIS point column, SRID 4326 (see `geometry4326` for why this is a customType). */
+const point4326 = customType<{ data: string; driverData: string }>({
+  dataType() {
+    return "geometry(Point,4326)";
+  },
+});
+
+/**
+ * Which attribute of each layer holds the ward number, ward name, street name and
+ * road class. Seeded by a migration from `src/field-map.ts`; a test keeps the two in sync.
+ * Read by the curated materialized views (see `0003_curated_views.sql`).
+ */
+export const layerFieldMap = openDataSync.table(
+  "layer_field_map",
+  {
+    town: text("town").notNull(),
+    dataGroup: text("data_group").notNull(),
+    wardNumberField: text("ward_number_field"),
+    wardNameField: text("ward_name_field"),
+    streetNameField: text("street_name_field"),
+    roadClassField: text("road_class_field"),
+  },
+  (t) => [primaryKey({ columns: [t.town, t.dataGroup] })],
+);
+
+/** How each HRPS incident description is grouped (collision, injury or fatal). */
+export const incidentTypeGroups = openDataSync.table("incident_type_groups", {
+  /** Trimmed, upper-case HRPS description, e.g. 'MVC - PI'. */
+  description: text("description").primaryKey(),
+  isCollision: boolean("is_collision").notNull(),
+  isInjuryOrFatal: boolean("is_injury_or_fatal").notNull(),
+});
+
+/**
+ * One row per HRPS incident (`safe_streets_halton.hrps_data`, keyed by "globalId"):
+ * its town, ward and nearest intersection. No foreign key: the two tables belong to
+ * different repos. Filled by `open_data_sync.refresh_incident_locations()`.
+ */
+export const incidentLocations = openDataSync.table(
+  "incident_locations",
+  {
+    globalId: varchar("global_id", { length: 255 }).primaryKey(),
+    town: text("town"),
+    wardId: text("ward_id"),
+    wardTown: text("ward_town"),
+    intersectionId: text("intersection_id"),
+    distanceToIntersectionM: real("distance_to_intersection_m"),
+    geom: point4326("geom").notNull(),
+    sourceUpdatedAt: timestamp("source_updated_at", { withTimezone: true }),
+    computedAt: timestamp("computed_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("incident_locations_geom_gist").using("gist", t.geom),
+    index("incident_locations_ward_id_idx").on(t.wardId),
+    index("incident_locations_intersection_id_idx").on(t.intersectionId),
+  ],
+);

@@ -6,7 +6,8 @@ See [CONTEXT.md](./CONTEXT.md) for the vocabulary used here.
 
 ## What it does
 
-- A weekly cron (`crons/sync-arcgis-layers.ts`, Mondays at 06:00 UTC) connects to Postgres and calls `syncAllLayers`.
+- A weekly cron (`crons/sync-arcgis-layers.ts`, Tuesdays at 00:00 UTC) connects to Postgres, calls `syncAllLayers`, and, if at least one layer was downloaded and none failed, calls `open_data_sync.refresh_curated()`.
+- A daily cron (`crons/refresh-incident-locations.ts`, 19:00 UTC, an hour after the HRPS pipeline's 18:00 sync) calls `open_data_sync.refresh_incident_locations()`. Both crons log the one-row `open_data_sync.integration_qa` view.
 - The layers to sync are listed in `src/layers.ts`.
 - Data lands in the `open_data_sync` schema, via Drizzle ORM, through a [Hyperdrive](https://developers.cloudflare.com/hyperdrive/) config that holds the database's CA (Workers cannot verify a private CA on a direct connection).
 - Deployed straight to your own Cloudflare account with the Void CLI (not the Void platform).
@@ -52,10 +53,32 @@ Both tables live in the `open_data_sync` schema (`drizzle/schema.ts`).
 
 Unique on (`layer_id`, `source_feature_id`). Indexes: btree on `data_group`, btree on `layer_id`, GiST on `geometry`.
 
+## Curated tables
+
+Post-processing runs as SQL inside Postgres (migration `0003_curated_views.sql`), in the same `open_data_sync` schema. `safe_streets_halton.hrps_data` is only read, never changed. Distances use EPSG:2958 (metres).
+
+| Object | Kind | What it is |
+| --- | --- | --- |
+| `layer_field_map` | table | Which attribute of each town's layer holds ward number, ward name, street name and road class. Seeded from `src/field-map.ts`; a test fails if they drift. |
+| `wards` | materialized view | One row per ward: `ward_id` (`milton-2`), `town`, `ward_number`, `ward_name`, `geom`, `geom_m`, `geom_display` (simplified to about 5 m). |
+| `road_segments` | materialized view | Road features as LineStrings with a normalized `street_name` ("BRANT ST." and "Brant Street" match). |
+| `intersections` | materialized view | Derived for all four towns from road segment end points: nodes within 3 m, two or more distinct streets, merged within 20 m when they share a street (divided roads, roundabouts, boundary roads). Burlington's published layer is only a check. |
+| `incident_type_groups` | table | Collision / injury-or-fatal flags per HRPS description. An unknown description shows in `integration_qa` until it is added. |
+| `incident_locations` | table | Per incident (`global_id` = `hrps_data."globalId"`): town, ward (polygon cover; lower `ward_id` on a boundary; nearest within 50 m), nearest intersection within 30 m. |
+| `integration_qa` | view | One row of counts for the logs. |
+
+`refresh_curated()` rebuilds the three views and recomputes every incident. `refresh_incident_locations()` is incremental (new or changed incidents; deletes rows whose incident is gone).
+
+The Worker's database role needs `SELECT` on `safe_streets_halton.hrps_data` (the only new grant). Run `pnpm db:migrate` before deploying; the migration fails if `hrps_data` does not exist.
+
+The opt-in baseline test (`tests/integration/baseline.test.ts`) syncs the live layers into a throwaway container, loads the 2024 HRPS export and checks the QA numbers and the Burlington cross-check:
+`HRPS_BACKFILL_GEOJSON=/path/to/crime_map_jan_1_2024.geojson pnpm exec vp test run tests/integration/baseline.test.ts`
+
 ## Adding a layer
 
 1. Add an entry to `LAYERS` in `src/layers.ts` with `town`, `dataGroup`, `name` and the layer `url` (use `TODO` and a comment if the URL is not resolved yet).
    Optionally set `editDateField` to the layer's last-edited date field (check the layer metadata) to skip downloads while the source is unchanged. The feature count in the fingerprint counts non-null values of that field.
+1b. If it is a ward or road layer, add its town's field names to `src/field-map.ts` and a migration row for `layer_field_map`.
 2. If it needs a new data group, add it to `DATA_GROUPS` in the same file.
 3. Run `pnpm exec vp test run` (URLs must be unique and values valid).
 4. On the next run the sync upserts `LAYERS` into `arcgis_raw_layers` (keyed on `service_url`; an existing row keeps its `enabled` flag). Layers with a `TODO` URL are skipped.
