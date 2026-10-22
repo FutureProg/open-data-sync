@@ -437,7 +437,7 @@ describe.skipIf(!dockerAvailable)("curated views against PostGIS", () => {
       await addIncident("padded", 500, 505, { description: " MVC - PI", city: "OAKVILLE" });
       await addIncident("offshore", -500, 500, { description: "mvc - fatality" });
       await addIncident("unknown-1", 800, 800, { description: "SPEEDING TICKET" });
-      await addIncident("unknown-2", 900, 800, { description: "Impaired Driving" });
+      await addIncident("unknown-2", 900, 800, { description: "Speeding Ticket" });
       // Latitude outside the valid range: never located.
       await db.query(
         `INSERT INTO safe_streets_halton.hrps_data (case_no, date, description, city, latitude, longitude, "globalId")
