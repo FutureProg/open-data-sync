@@ -93,6 +93,13 @@ describe.skipIf(!enabled)("2024 backfill baseline", () => {
     expect(rows.length / Number(total[0]!.n)).toBeLessThan(0.05);
   });
 
+  it("gives every intersection a unique id", async () => {
+    const { rows } = await db.query(
+      "SELECT count(*) AS n, count(DISTINCT intersection_id) AS ids FROM geo.intersections",
+    );
+    expect(rows[0]!.ids).toBe(rows[0]!.n);
+  });
+
   it("stays inside the baseline set on 2026-10-22 (6,634 incidents)", () => {
     expect(Number(qa.incidents_without_ward)).toBe(0);
     // 59 on the day: incidents whose police town differs from the ward polygon's town.

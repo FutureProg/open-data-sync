@@ -204,7 +204,7 @@ WITH RECURSIVE ends AS (
 	GROUP BY comp_id
 ), final AS (
 	SELECT
-		left(md5(t.town || ':' || round(ST_X(p.geom_m))::text || ':' || round(ST_Y(p.geom_m))::text), 16) AS intersection_id,
+		left(md5(t.town || ':' || round(ST_X(p.geom_m))::text || ':' || round(ST_Y(p.geom_m))::text), 16) AS base_id,
 		t.town,
 		s.street_names,
 		array_to_string(s.street_names, ' & ') AS label,
@@ -213,15 +213,17 @@ WITH RECURSIVE ends AS (
 	JOIN comp_towns t USING (comp_id)
 	JOIN comp_streets s USING (comp_id)
 )
-SELECT DISTINCT ON (intersection_id)
-	intersection_id,
+SELECT
+	-- Two intersections can round to the same metre. The first keeps the plain hash; any others
+	-- get -2, -3 ... in label order, so every row has a unique id and none is dropped.
+	base_id || CASE WHEN row_number() OVER w > 1 THEN '-' || row_number() OVER w ELSE '' END AS intersection_id,
 	town,
 	street_names,
 	label,
 	ST_Transform(geom_m, 4326)::geometry(Point, 4326) AS geom,
 	geom_m::geometry(Point, 2958) AS geom_m
 FROM final
-ORDER BY intersection_id;--> statement-breakpoint
+WINDOW w AS (PARTITION BY base_id ORDER BY label, ST_X(geom_m), ST_Y(geom_m));--> statement-breakpoint
 CREATE UNIQUE INDEX "intersections_intersection_id_uq" ON "geo"."intersections" ("intersection_id");--> statement-breakpoint
 CREATE INDEX "intersections_geom_m_gist" ON "geo"."intersections" USING gist ("geom_m");--> statement-breakpoint
 CREATE INDEX "intersections_geom_gist" ON "geo"."intersections" USING gist ("geom");--> statement-breakpoint
