@@ -3,7 +3,7 @@ import type { DataGroup, Town } from "./layers";
 /**
  * Which attribute of each town's layer holds the fields the curated views need.
  * Each town names them differently. A migration copies this into
- * `open_data_sync.layer_field_map` so the SQL can read it; a test fails if the two drift.
+ * `geo.layer_field_map` so the SQL can read it; a test fails if the two drift.
  * Field names were read off each layer's ArcGIS metadata.
  */
 export interface LayerFieldMapping {

@@ -111,13 +111,13 @@ describe.skipIf(!dockerAvailable)("curated views against PostGIS", () => {
   }
 
   const refreshViews = async () => {
-    await db.query("REFRESH MATERIALIZED VIEW open_data_sync.wards");
-    await db.query("REFRESH MATERIALIZED VIEW open_data_sync.road_segments");
-    await db.query("REFRESH MATERIALIZED VIEW open_data_sync.intersections");
+    await db.query("REFRESH MATERIALIZED VIEW geo.wards");
+    await db.query("REFRESH MATERIALIZED VIEW geo.road_segments");
+    await db.query("REFRESH MATERIALIZED VIEW geo.intersections");
   };
   const intersections = async () => {
     await refreshViews();
-    return rows("SELECT * FROM open_data_sync.intersections ORDER BY label");
+    return rows("SELECT * FROM geo.intersections ORDER BY label");
   };
 
   async function addIncident(
@@ -143,14 +143,13 @@ describe.skipIf(!dockerAvailable)("curated views against PostGIS", () => {
   }
 
   const location = async (id: string) => {
-    const [row] = await rows(
-      "SELECT * FROM open_data_sync.incident_locations WHERE global_id = $1",
-      [id],
-    );
+    const [row] = await rows("SELECT * FROM incidents.incident_locations WHERE global_id = $1", [
+      id,
+    ]);
     return row;
   };
   const refreshLocations = async (recomputeAll = false) =>
-    Number(await scalar("SELECT open_data_sync.refresh_incident_locations($1)", [recomputeAll]));
+    Number(await scalar("SELECT incidents.refresh_incident_locations($1)", [recomputeAll]));
 
   /** Milton wards 1 (x 0..1000) and 2 (x 1000..2000), both y 0..1000. */
   async function addMiltonWards() {
@@ -160,7 +159,7 @@ describe.skipIf(!dockerAvailable)("curated views against PostGIS", () => {
 
   it("normalize_street_name tidies suffixes, directions and parentheticals", async () => {
     const normalize = async (raw: string | null) =>
-      scalar("SELECT open_data_sync.normalize_street_name($1)", [raw]);
+      scalar("SELECT geo.normalize_street_name($1)", [raw]);
     expect(await normalize("BRANT ST.")).toBe("Brant Street");
     expect(await normalize("Brant Rd")).toBe("Brant Road");
     expect(await normalize("MAIN STREET S")).toBe("Main Street South");
@@ -174,7 +173,7 @@ describe.skipIf(!dockerAvailable)("curated views against PostGIS", () => {
 
   it("incident_town maps police cities to municipalities", async () => {
     const town = async (city: string | null) =>
-      scalar("SELECT open_data_sync.incident_town($1)", [city]);
+      scalar("SELECT incidents.incident_town($1)", [city]);
     expect(await town("Georgetown")).toBe("Halton Hills");
     expect(await town("Acton")).toBe("Halton Hills");
     expect(await town("HALTON HILLS")).toBe("Halton Hills");
@@ -196,7 +195,7 @@ describe.skipIf(!dockerAvailable)("curated views against PostGIS", () => {
       );
       await refreshViews();
       const wards = await rows(
-        "SELECT ward_id, town, ward_number, ward_name FROM open_data_sync.wards ORDER BY ward_id",
+        "SELECT ward_id, town, ward_number, ward_name FROM geo.wards ORDER BY ward_id",
       );
       expect(wards).toEqual([
         { ward_id: "burlington-5", town: "Burlington", ward_number: 5, ward_name: "Ward 5" },
@@ -228,7 +227,7 @@ describe.skipIf(!dockerAvailable)("curated views against PostGIS", () => {
       await refreshViews();
       const [ward] = await rows(`SELECT ST_SRID(geom_m) AS m_srid, ST_SRID(geom) AS srid,
         ST_SRID(geom_display) AS d_srid, ST_NPoints(geom) AS full_points,
-        ST_NPoints(geom_display) AS display_points FROM open_data_sync.wards`);
+        ST_NPoints(geom_display) AS display_points FROM geo.wards`);
       expect(ward).toMatchObject({ m_srid: 2958, srid: 4326, d_srid: 4326 });
       expect(Number(ward!.display_points)).toBeLessThan(Number(ward!.full_points));
     });
@@ -237,7 +236,7 @@ describe.skipIf(!dockerAvailable)("curated views against PostGIS", () => {
       await addWard("Milton", { WARD_NUM: 2, Name: "East" }, rectangle(0, 0, 500, 500));
       await addWard("Milton", { WARD_NUM: 2, Name: "East" }, rectangle(500, 0, 1000, 500));
       await refreshViews();
-      const wards = await rows("SELECT ward_id, ST_Area(geom_m) AS area FROM open_data_sync.wards");
+      const wards = await rows("SELECT ward_id, ST_Area(geom_m) AS area FROM geo.wards");
       expect(wards).toHaveLength(1);
       expect(Number(wards[0]!.area)).toBeGreaterThan(240_000);
     });
@@ -372,7 +371,7 @@ describe.skipIf(!dockerAvailable)("curated views against PostGIS", () => {
       await addRoad("Milton", "OAK ST", "2", [540, 500], [540, 600]);
       await refreshViews();
       const all = await rows(
-        "SELECT intersection_id, label FROM open_data_sync.intersections ORDER BY ST_X(geom_m)",
+        "SELECT intersection_id, label FROM geo.intersections ORDER BY ST_X(geom_m)",
       );
       expect(all).toHaveLength(2);
       await addIncident("between", 525, 500);
@@ -420,9 +419,7 @@ describe.skipIf(!dockerAvailable)("curated views against PostGIS", () => {
       await db.query(`DELETE FROM safe_streets_halton.hrps_data WHERE "globalId" = 'a'`);
       expect(await refreshLocations()).toBe(0);
       expect(await location("a")).toBeUndefined();
-      expect(Number(await scalar("SELECT count(*) FROM open_data_sync.incident_locations"))).toBe(
-        3,
-      );
+      expect(Number(await scalar("SELECT count(*) FROM incidents.incident_locations"))).toBe(3);
 
       expect(await refreshLocations(true)).toBe(3);
     });
@@ -444,7 +441,7 @@ describe.skipIf(!dockerAvailable)("curated views against PostGIS", () => {
          VALUES ('bad', now(), 'MVC - PI', 'MILTON', 95, -79.8, 'bad')`,
       );
 
-      const qa = async () => (await rows("SELECT * FROM open_data_sync.integration_qa"))[0]!;
+      const qa = async () => (await rows("SELECT * FROM incidents.integration_qa"))[0]!;
       expect(Number((await qa()).incidents_unlocated)).toBe(6);
 
       await refreshLocations();
@@ -463,7 +460,7 @@ describe.skipIf(!dockerAvailable)("curated views against PostGIS", () => {
   it("layer_field_map matches FIELD_MAP exactly", async () => {
     const fromDatabase = await rows(
       `SELECT town, data_group, ward_number_field, ward_name_field, street_name_field, road_class_field
-       FROM open_data_sync.layer_field_map ORDER BY town, data_group`,
+       FROM geo.layer_field_map ORDER BY town, data_group`,
     );
     const fromCode = FIELD_MAP.map((entry) => ({
       town: entry.town,
@@ -474,5 +471,22 @@ describe.skipIf(!dockerAvailable)("curated views against PostGIS", () => {
       road_class_field: entry.roadClassField ?? null,
     })).sort((a, b) => a.town.localeCompare(b.town) || a.data_group.localeCompare(b.data_group));
     expect(fromDatabase).toEqual(fromCode);
+  });
+
+  it("keeps geo independent of incidents", async () => {
+    // No geo view or function may reference anything in the incidents schema.
+    const viewDependencies = await rows(`
+      SELECT DISTINCT dependent.relname
+      FROM pg_depend d
+      JOIN pg_rewrite r ON r.oid = d.objid
+      JOIN pg_class dependent ON dependent.oid = r.ev_class
+      JOIN pg_namespace dn ON dn.oid = dependent.relnamespace AND dn.nspname = 'geo'
+      JOIN pg_class referenced ON referenced.oid = d.refobjid
+      JOIN pg_namespace rn ON rn.oid = referenced.relnamespace AND rn.nspname = 'incidents'`);
+    expect(viewDependencies).toEqual([]);
+    const functionsMentioningIncidents = await rows(`
+      SELECT p.proname FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+      WHERE n.nspname = 'geo' AND p.prosrc ~ 'incidents\\.'`);
+    expect(functionsMentioningIncidents).toEqual([]);
   });
 });

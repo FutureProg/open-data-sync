@@ -26,13 +26,15 @@ export interface TestDatabase {
 
 /**
  * Start a throwaway PostGIS container and apply the repo's real migrations.
- * The schema and the extension are created here only; migrations never do that.
+ * The schemas and the extension are created here only; migrations never do that.
  */
 export async function startTestDatabase(): Promise<TestDatabase> {
   const container = await new PostgreSqlContainer("postgis/postgis:16-3.4").start();
   const pool = new Pool({ connectionString: container.getConnectionUri() });
   await pool.query("CREATE EXTENSION IF NOT EXISTS postgis");
   await pool.query("CREATE SCHEMA IF NOT EXISTS open_data_sync");
+  await pool.query("CREATE SCHEMA IF NOT EXISTS geo");
+  await pool.query("CREATE SCHEMA IF NOT EXISTS incidents");
   // Stand-in for the HRPS pipeline's table, which this repo reads but never creates.
   await pool.query("CREATE SCHEMA IF NOT EXISTS safe_streets_halton");
   await pool.query(`CREATE TABLE IF NOT EXISTS safe_streets_halton.hrps_data (
@@ -58,7 +60,7 @@ export async function startTestDatabase(): Promise<TestDatabase> {
     query: (text, values) => pool.query(text, values),
     reset: async () => {
       await pool.query("TRUNCATE open_data_sync.arcgis_raw_layers RESTART IDENTITY CASCADE");
-      await pool.query("TRUNCATE open_data_sync.incident_locations");
+      await pool.query("TRUNCATE incidents.incident_locations");
       await pool.query("TRUNCATE safe_streets_halton.hrps_data");
     },
     stop: async () => {

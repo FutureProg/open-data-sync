@@ -18,7 +18,7 @@ The weekly run that fetches every enabled Layer's Features from ArcGIS and upser
 Data stored as published, with no cleaning or modelling. Downstream tables and views build on the raw tables.
 
 **Curated**
-Cleaned tables and views built from Raw data by SQL in `open_data_sync`: `wards`, `road_segments`, `intersections`, with the same columns for every town. Rebuilt after a Sync that downloaded something.
+Cleaned data built from Raw data by SQL, in domain schemas: `geo` holds `wards`, `road_segments` and `intersections` (same columns for every town), rebuilt after a Sync that downloaded something; `incidents` holds the Incident locations. `incidents` depends on `geo`, never the reverse.
 
 **Incident location**
-One row per HRPS incident in `incident_locations`, holding its town, ward and nearest intersection (within 30 m).
+One row per HRPS incident in `incidents.incident_locations`, holding its town, ward and nearest intersection (within 30 m).

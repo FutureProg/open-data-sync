@@ -30,9 +30,9 @@ const geometry4326 = customType<{ data: string; driverData: string }>({
 });
 
 /**
- * All tables live in the pre-existing `open_data_sync` schema. Migrations never
- * create or drop anything outside it, and never run CREATE EXTENSION (PostGIS is
- * already enabled by the database owner).
+ * Raw tables live in the pre-existing `open_data_sync` schema. Migrations only touch
+ * `open_data_sync`, `geo` and `incidents`, and never run CREATE SCHEMA or CREATE
+ * EXTENSION (PostGIS is already enabled by the database owner).
  */
 export const openDataSync = pgSchema("open_data_sync");
 
@@ -96,11 +96,20 @@ const point4326 = customType<{ data: string; driverData: string }>({
 });
 
 /**
+ * Curated data lives in two domain schemas, both owned by this repo's migrations:
+ * `geo` (Halton reference geography) and `incidents` (police incident enrichment).
+ * incidents reads geo; geo never reads incidents. Like `open_data_sync`, both must
+ * already exist: migrations never create schemas.
+ */
+export const geo = pgSchema("geo");
+export const incidents = pgSchema("incidents");
+
+/**
  * Which attribute of each layer holds the ward number, ward name, street name and
  * road class. Seeded by a migration from `src/field-map.ts`; a test keeps the two in sync.
  * Read by the curated materialized views (see `0003_curated_views.sql`).
  */
-export const layerFieldMap = openDataSync.table(
+export const layerFieldMap = geo.table(
   "layer_field_map",
   {
     town: text("town").notNull(),
@@ -114,7 +123,7 @@ export const layerFieldMap = openDataSync.table(
 );
 
 /** How each HRPS incident description is grouped (collision, injury or fatal). */
-export const incidentTypeGroups = openDataSync.table("incident_type_groups", {
+export const incidentTypeGroups = incidents.table("incident_type_groups", {
   /** Trimmed, upper-case HRPS description, e.g. 'MVC - PI'. */
   description: text("description").primaryKey(),
   isCollision: boolean("is_collision").notNull(),
@@ -124,9 +133,9 @@ export const incidentTypeGroups = openDataSync.table("incident_type_groups", {
 /**
  * One row per HRPS incident (`safe_streets_halton.hrps_data`, keyed by "globalId"):
  * its town, ward and nearest intersection. No foreign key: the two tables belong to
- * different repos. Filled by `open_data_sync.refresh_incident_locations()`.
+ * different repos. Filled by `incidents.refresh_incident_locations()`.
  */
-export const incidentLocations = openDataSync.table(
+export const incidentLocations = incidents.table(
   "incident_locations",
   {
     globalId: varchar("global_id", { length: 255 }).primaryKey(),
@@ -158,7 +167,7 @@ const geometryOf = (type: string, srid: number) =>
     },
   });
 
-export const wards = openDataSync
+export const wards = geo
   .materializedView("wards", {
     wardId: text("ward_id").notNull(),
     town: text("town").notNull(),
@@ -170,7 +179,7 @@ export const wards = openDataSync
   })
   .existing();
 
-export const roadSegments = openDataSync
+export const roadSegments = geo
   .materializedView("road_segments", {
     segmentId: text("segment_id").notNull(),
     town: text("town").notNull(),
@@ -182,7 +191,7 @@ export const roadSegments = openDataSync
   })
   .existing();
 
-export const intersections = openDataSync
+export const intersections = geo
   .materializedView("intersections", {
     intersectionId: text("intersection_id").notNull(),
     town: text("town").notNull(),
@@ -193,7 +202,7 @@ export const intersections = openDataSync
   })
   .existing();
 
-export const integrationQa = openDataSync
+export const integrationQa = incidents
   .view("integration_qa", {
     incidentsTotal: bigint("incidents_total", { mode: "number" }).notNull(),
     incidentsUnlocated: bigint("incidents_unlocated", { mode: "number" }).notNull(),

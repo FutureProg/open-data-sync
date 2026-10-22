@@ -54,7 +54,7 @@ describe.skipIf(!enabled)("2024 backfill baseline", () => {
       );
     }
     await refreshCurated(db.database, console.log);
-    qa = (await db.query("SELECT * FROM open_data_sync.integration_qa")).rows[0]!;
+    qa = (await db.query("SELECT * FROM incidents.integration_qa")).rows[0]!;
     await logIntegrationQa(db.database, console.log);
   }, 900_000);
 
@@ -79,7 +79,7 @@ describe.skipIf(!enabled)("2024 backfill baseline", () => {
       FROM open_data_sync.arcgis_raw_features f
       WHERE f.data_group = 'intersections' AND f.geometry IS NOT NULL
         AND NOT EXISTS (
-          SELECT 1 FROM open_data_sync.intersections i
+          SELECT 1 FROM geo.intersections i
           WHERE ST_DWithin(i.geom_m, ST_Transform(f.geometry, 2958), 15))`);
     const { rows: total } = await db.query(
       "SELECT count(*) AS n FROM open_data_sync.arcgis_raw_features WHERE data_group = 'intersections'",

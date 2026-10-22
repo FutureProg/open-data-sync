@@ -1,4 +1,6 @@
-CREATE TABLE "open_data_sync"."incident_locations" (
+--> statement-breakpoint
+--> statement-breakpoint
+CREATE TABLE "incidents"."incident_locations" (
 	"global_id" varchar(255) PRIMARY KEY NOT NULL,
 	"town" text,
 	"ward_id" text,
@@ -10,13 +12,13 @@ CREATE TABLE "open_data_sync"."incident_locations" (
 	"computed_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE "open_data_sync"."incident_type_groups" (
+CREATE TABLE "incidents"."incident_type_groups" (
 	"description" text PRIMARY KEY NOT NULL,
 	"is_collision" boolean NOT NULL,
 	"is_injury_or_fatal" boolean NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE "open_data_sync"."layer_field_map" (
+CREATE TABLE "geo"."layer_field_map" (
 	"town" text NOT NULL,
 	"data_group" text NOT NULL,
 	"ward_number_field" text,
@@ -26,6 +28,6 @@ CREATE TABLE "open_data_sync"."layer_field_map" (
 	CONSTRAINT "layer_field_map_town_data_group_pk" PRIMARY KEY("town","data_group")
 );
 --> statement-breakpoint
-CREATE INDEX "incident_locations_geom_gist" ON "open_data_sync"."incident_locations" USING gist ("geom");--> statement-breakpoint
-CREATE INDEX "incident_locations_ward_id_idx" ON "open_data_sync"."incident_locations" USING btree ("ward_id");--> statement-breakpoint
-CREATE INDEX "incident_locations_intersection_id_idx" ON "open_data_sync"."incident_locations" USING btree ("intersection_id");
+CREATE INDEX "incident_locations_geom_gist" ON "incidents"."incident_locations" USING gist ("geom");--> statement-breakpoint
+CREATE INDEX "incident_locations_ward_id_idx" ON "incidents"."incident_locations" USING btree ("ward_id");--> statement-breakpoint
+CREATE INDEX "incident_locations_intersection_id_idx" ON "incidents"."incident_locations" USING btree ("intersection_id");

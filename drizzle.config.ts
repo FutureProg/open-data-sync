@@ -8,8 +8,8 @@ export default defineConfig({
   dialect: "postgresql",
   schema: "./drizzle/schema.ts",
   out: "./drizzle/migrations",
-  // Only ever look at our own schema; the database is shared with other apps.
-  schemaFilter: ["open_data_sync"],
+  // Only ever look at our own schemas; the database is shared with other apps.
+  schemaFilter: ["open_data_sync", "geo", "incidents"],
   // Keep drizzle's bookkeeping table inside open_data_sync too.
   migrations: { schema: "open_data_sync", table: "__drizzle_migrations" },
   dbCredentials: process.env.DB_CA_CERT
