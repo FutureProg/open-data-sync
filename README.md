@@ -57,15 +57,15 @@ Unique on (`layer_id`, `source_feature_id`). Indexes: btree on `data_group`, btr
 
 Post-processing runs as SQL inside Postgres (migration `0003_curated_views.sql`), in the same `open_data_sync` schema. `safe_streets_halton.hrps_data` is only read, never changed. Distances use EPSG:2958 (metres).
 
-| Object | Kind | What it is |
-| --- | --- | --- |
-| `layer_field_map` | table | Which attribute of each town's layer holds ward number, ward name, street name and road class. Seeded from `src/field-map.ts`; a test fails if they drift. |
-| `wards` | materialized view | One row per ward: `ward_id` (`milton-2`), `town`, `ward_number`, `ward_name`, `geom`, `geom_m`, `geom_display` (simplified to about 5 m). |
-| `road_segments` | materialized view | Road features as LineStrings with a normalized `street_name` ("BRANT ST." and "Brant Street" match). |
-| `intersections` | materialized view | Derived for all four towns from road segment end points: nodes within 3 m, two or more distinct streets, merged within 20 m when they share a street (divided roads, roundabouts, boundary roads). Burlington's published layer is only a check. |
-| `incident_type_groups` | table | Collision / injury-or-fatal flags per HRPS description. An unknown description shows in `integration_qa` until it is added. |
-| `incident_locations` | table | Per incident (`global_id` = `hrps_data."globalId"`): town, ward (polygon cover; lower `ward_id` on a boundary; nearest within 50 m), nearest intersection within 30 m. |
-| `integration_qa` | view | One row of counts for the logs. |
+| Object                 | Kind              | What it is                                                                                                                                                                                                                                       |
+| ---------------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `layer_field_map`      | table             | Which attribute of each town's layer holds ward number, ward name, street name and road class. Seeded from `src/field-map.ts`; a test fails if they drift.                                                                                       |
+| `wards`                | materialized view | One row per ward: `ward_id` (`milton-2`), `town`, `ward_number`, `ward_name`, `geom`, `geom_m`, `geom_display` (simplified to about 5 m).                                                                                                        |
+| `road_segments`        | materialized view | Road features as LineStrings with a normalized `street_name` ("BRANT ST." and "Brant Street" match).                                                                                                                                             |
+| `intersections`        | materialized view | Derived for all four towns from road segment end points: nodes within 3 m, two or more distinct streets, merged within 20 m when they share a street (divided roads, roundabouts, boundary roads). Burlington's published layer is only a check. |
+| `incident_type_groups` | table             | Collision / injury-or-fatal flags per HRPS description. An unknown description shows in `integration_qa` until it is added.                                                                                                                      |
+| `incident_locations`   | table             | Per incident (`global_id` = `hrps_data."globalId"`): town, ward (polygon cover; lower `ward_id` on a boundary; nearest within 50 m), nearest intersection within 30 m.                                                                           |
+| `integration_qa`       | view              | One row of counts for the logs.                                                                                                                                                                                                                  |
 
 `refresh_curated()` rebuilds the three views and recomputes every incident. `refresh_incident_locations()` is incremental (new or changed incidents; deletes rows whose incident is gone).
 
@@ -78,7 +78,7 @@ The opt-in baseline test (`tests/integration/baseline.test.ts`) syncs the live l
 
 1. Add an entry to `LAYERS` in `src/layers.ts` with `town`, `dataGroup`, `name` and the layer `url` (use `TODO` and a comment if the URL is not resolved yet).
    Optionally set `editDateField` to the layer's last-edited date field (check the layer metadata) to skip downloads while the source is unchanged. The feature count in the fingerprint counts non-null values of that field.
-1b. If it is a ward or road layer, add its town's field names to `src/field-map.ts` and a migration row for `layer_field_map`.
+   1b. If it is a ward or road layer, add its town's field names to `src/field-map.ts` and a migration row for `layer_field_map`.
 2. If it needs a new data group, add it to `DATA_GROUPS` in the same file.
 3. Run `pnpm exec vp test run` (URLs must be unique and values valid).
 4. On the next run the sync upserts `LAYERS` into `arcgis_raw_layers` (keyed on `service_url`; an existing row keeps its `enabled` flag). Layers with a `TODO` URL are skipped.

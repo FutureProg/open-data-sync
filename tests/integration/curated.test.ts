@@ -436,7 +436,7 @@ describe.skipIf(!dockerAvailable)("curated views against PostGIS", () => {
       await addIncident("near-pi", 505, 500);
       await addIncident("padded", 500, 505, { description: " MVC - PI", city: "OAKVILLE" });
       await addIncident("offshore", -500, 500, { description: "mvc - fatality" });
-      await addIncident("unknown-1", 800, 800, { description: "IMPAIRED DRIVING" });
+      await addIncident("unknown-1", 800, 800, { description: "SPEEDING TICKET" });
       await addIncident("unknown-2", 900, 800, { description: "Impaired Driving" });
       // Latitude outside the valid range: never located.
       await db.query(
@@ -456,7 +456,7 @@ describe.skipIf(!dockerAvailable)("curated views against PostGIS", () => {
       expect(Number(result.share_near_intersection)).toBeCloseTo(0.4, 4);
       expect(result.intersections_per_town).toEqual({ Milton: 1 });
       expect(Number(result.unknown_description_incidents)).toBe(2);
-      expect(result.unknown_descriptions).toEqual(["IMPAIRED DRIVING"]);
+      expect(result.unknown_descriptions).toEqual(["SPEEDING TICKET"]);
     });
   });
 
