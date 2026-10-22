@@ -6,9 +6,11 @@ import {
   index,
   integer,
   jsonb,
+  numeric,
   pgSchema,
   primaryKey,
   real,
+  smallint,
   text,
   timestamp,
   unique,
@@ -143,3 +145,65 @@ export const incidentLocations = openDataSync.table(
     index("incident_locations_intersection_id_idx").on(t.intersectionId),
   ],
 );
+
+/**
+ * Read-only declarations of the curated views, which are created by raw SQL in
+ * `0003_curated_views.sql` (Drizzle cannot express their recursive CTE, clustering and
+ * lateral joins). `.existing()` keeps them out of generated migrations and gives typed selects.
+ */
+const geometryOf = (type: string, srid: number) =>
+  customType<{ data: string; driverData: string }>({
+    dataType() {
+      return `geometry(${type},${srid})`;
+    },
+  });
+
+export const wards = openDataSync
+  .materializedView("wards", {
+    wardId: text("ward_id").notNull(),
+    town: text("town").notNull(),
+    wardNumber: integer("ward_number").notNull(),
+    wardName: text("ward_name").notNull(),
+    geom: geometryOf("MultiPolygon", 4326)("geom").notNull(),
+    geomM: geometryOf("MultiPolygon", 2958)("geom_m").notNull(),
+    geomDisplay: geometryOf("MultiPolygon", 4326)("geom_display").notNull(),
+  })
+  .existing();
+
+export const roadSegments = openDataSync
+  .materializedView("road_segments", {
+    segmentId: text("segment_id").notNull(),
+    town: text("town").notNull(),
+    streetName: text("street_name"),
+    streetKey: text("street_key"),
+    roadClass: text("road_class"),
+    classRank: smallint("class_rank").notNull(),
+    geomM: geometryOf("LineString", 2958)("geom_m").notNull(),
+  })
+  .existing();
+
+export const intersections = openDataSync
+  .materializedView("intersections", {
+    intersectionId: text("intersection_id").notNull(),
+    town: text("town").notNull(),
+    streetNames: text("street_names").array().notNull(),
+    label: text("label").notNull(),
+    geom: geometryOf("Point", 4326)("geom").notNull(),
+    geomM: geometryOf("Point", 2958)("geom_m").notNull(),
+  })
+  .existing();
+
+export const integrationQa = openDataSync
+  .view("integration_qa", {
+    incidentsTotal: bigint("incidents_total", { mode: "number" }).notNull(),
+    incidentsUnlocated: bigint("incidents_unlocated", { mode: "number" }).notNull(),
+    incidentsWithoutWard: bigint("incidents_without_ward", { mode: "number" }).notNull(),
+    wardTownMismatches: bigint("ward_town_mismatches", { mode: "number" }).notNull(),
+    shareNearIntersection: numeric("share_near_intersection"),
+    intersectionsPerTown: jsonb("intersections_per_town").$type<Record<string, number>>().notNull(),
+    unknownDescriptionIncidents: bigint("unknown_description_incidents", {
+      mode: "number",
+    }).notNull(),
+    unknownDescriptions: text("unknown_descriptions").array().notNull(),
+  })
+  .existing();
