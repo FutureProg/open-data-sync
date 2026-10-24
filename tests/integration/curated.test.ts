@@ -169,6 +169,9 @@ describe.skipIf(!dockerAvailable)("curated views against PostGIS", () => {
     expect(await normalize("")).toBeNull();
     expect(await normalize("   ")).toBeNull();
     expect(await normalize("Highway 7")).toBe("Highway 7");
+    for (const placeholder of ["NA", "N/A", " na. ", "Unknown"]) {
+      expect(await normalize(placeholder)).toBeNull();
+    }
   });
 
   it("incident_town maps police cities to municipalities", async () => {
@@ -305,11 +308,11 @@ describe.skipIf(!dockerAvailable)("curated views against PostGIS", () => {
       expect(found[0]!.label).toBe("Trafalgar Road & Dundas Street");
     });
 
-    it("keeps intersection_id stable across a refresh and 16 characters long", async () => {
+    it("keeps intersection_id stable across a refresh, as a 10 character geohash", async () => {
       await addPlus(0, 0, "MAIN ST", "ELM ST");
       const first = await intersections();
       const second = await intersections();
-      expect(String(first[0]!.intersection_id)).toHaveLength(16);
+      expect(String(first[0]!.intersection_id)).toHaveLength(10);
       expect(second[0]!.intersection_id).toBe(first[0]!.intersection_id);
     });
 

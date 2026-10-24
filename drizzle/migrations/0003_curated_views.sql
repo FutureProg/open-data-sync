@@ -38,6 +38,10 @@ BEGIN
 		' ');
 	n := coalesce(array_length(words, 1), 0);
 	IF n = 0 OR words[1] = '' THEN RETURN NULL; END IF;
+	-- Placeholders some layers use for "no name" (e.g. Oakville's "NA") are not streets.
+	IF n = 1 AND rtrim(words[1], '.') IN ('na', 'n/a', 'none', 'null', 'unknown', 'unnamed', 'tbd', '0') THEN
+		RETURN NULL;
+	END IF;
 	FOR i IN 1..n LOOP
 		w := rtrim(words[i], '.,');
 		IF i > 1 THEN
@@ -204,7 +208,8 @@ WITH RECURSIVE ends AS (
 	GROUP BY comp_id
 ), final AS (
 	SELECT
-		left(md5(t.town || ':' || round(ST_X(p.geom_m))::text || ':' || round(ST_Y(p.geom_m))::text), 16) AS base_id,
+		-- Precision 10 is a cell of about 1.2 m by 0.6 m; intersections are at least 3 m apart.
+		ST_GeoHash(ST_Transform(p.geom_m, 4326), 10) AS base_id,
 		t.town,
 		s.street_names,
 		array_to_string(s.street_names, ' & ') AS label,
@@ -214,7 +219,7 @@ WITH RECURSIVE ends AS (
 	JOIN comp_streets s USING (comp_id)
 )
 SELECT
-	-- Two intersections can round to the same metre. The first keeps the plain hash; any others
+	-- Two intersections in the same geohash cell would share an id. The first keeps the plain geohash; any others
 	-- get -2, -3 ... in label order, so every row has a unique id and none is dropped.
 	base_id || CASE WHEN row_number() OVER w > 1 THEN '-' || row_number() OVER w ELSE '' END AS intersection_id,
 	town,
