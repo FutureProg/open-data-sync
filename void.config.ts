@@ -19,5 +19,12 @@ export default defineConfig({
     ],
     preview_urls: true,
     workers_dev: true,
+    // Workers Logs and real-time Issues. Cloudflare turns them off for any version
+    // deployed without them, so they have to be declared here.
+    observability: {
+      enabled: true,
+      logs: { enabled: true, invocation_logs: true },
+      issues: { enabled: true },
+    },
   },
 });
