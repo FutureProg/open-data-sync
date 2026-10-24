@@ -3,7 +3,7 @@ import { defineConfig } from "vite-plus";
 
 export default defineConfig({
   // The Void/Cloudflare plugin boots workerd, which unit tests do not need.
-  plugins: process.env.VITEST ? [] :[voidPlugin()],
+  plugins: process.env.VITEST ? [] : [voidPlugin()],
   staged: {
     "*": "vp check --fix",
   },

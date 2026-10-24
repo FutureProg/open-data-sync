@@ -15,6 +15,20 @@
       "when": 1792291975387,
       "tag": "0001_flaky_onslaught",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1792694642290,
+      "tag": "0002_curated_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1792694642639,
+      "tag": "0003_curated_views",
+      "breakpoints": true
     }
   ]
 }

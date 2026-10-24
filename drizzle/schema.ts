@@ -6,10 +6,15 @@ import {
   index,
   integer,
   jsonb,
+  numeric,
   pgSchema,
+  primaryKey,
+  real,
+  smallint,
   text,
   timestamp,
   unique,
+  varchar,
 } from "drizzle-orm/pg-core";
 
 /**
@@ -25,9 +30,9 @@ const geometry4326 = customType<{ data: string; driverData: string }>({
 });
 
 /**
- * All tables live in the pre-existing `open_data_sync` schema. Migrations never
- * create or drop anything outside it, and never run CREATE EXTENSION (PostGIS is
- * already enabled by the database owner).
+ * Raw tables live in the pre-existing `open_data_sync` schema. Migrations only touch
+ * `open_data_sync`, `geo` and `incidents`, and never run CREATE SCHEMA or CREATE
+ * EXTENSION (PostGIS is already enabled by the database owner).
  */
 export const openDataSync = pgSchema("open_data_sync");
 
@@ -82,3 +87,132 @@ export type ArcgisRawLayer = typeof arcgisRawLayers.$inferSelect;
 export type NewArcgisRawLayer = typeof arcgisRawLayers.$inferInsert;
 export type ArcgisRawFeature = typeof arcgisRawFeatures.$inferSelect;
 export type NewArcgisRawFeature = typeof arcgisRawFeatures.$inferInsert;
+
+/** PostGIS point column, SRID 4326 (see `geometry4326` for why this is a customType). */
+const point4326 = customType<{ data: string; driverData: string }>({
+  dataType() {
+    return "geometry(Point,4326)";
+  },
+});
+
+/**
+ * Curated data lives in two domain schemas, both owned by this repo's migrations:
+ * `geo` (Halton reference geography) and `incidents` (police incident enrichment).
+ * incidents reads geo; geo never reads incidents. Like `open_data_sync`, both must
+ * already exist: migrations never create schemas.
+ */
+export const geo = pgSchema("geo");
+export const incidents = pgSchema("incidents");
+
+/**
+ * Which attribute of each layer holds the ward number, ward name, street name and
+ * road class. Seeded by a migration from `src/field-map.ts`; a test keeps the two in sync.
+ * Read by the curated materialized views (see `0003_curated_views.sql`).
+ */
+export const layerFieldMap = geo.table(
+  "layer_field_map",
+  {
+    town: text("town").notNull(),
+    dataGroup: text("data_group").notNull(),
+    wardNumberField: text("ward_number_field"),
+    wardNameField: text("ward_name_field"),
+    streetNameField: text("street_name_field"),
+    roadClassField: text("road_class_field"),
+  },
+  (t) => [primaryKey({ columns: [t.town, t.dataGroup] })],
+);
+
+/** How each HRPS incident description is grouped (collision, injury or fatal). */
+export const incidentTypeGroups = incidents.table("incident_type_groups", {
+  /** Trimmed, upper-case HRPS description, e.g. 'MVC - PI'. */
+  description: text("description").primaryKey(),
+  isCollision: boolean("is_collision").notNull(),
+  isInjuryOrFatal: boolean("is_injury_or_fatal").notNull(),
+});
+
+/**
+ * One row per HRPS incident (`safe_streets_halton.hrps_data`, keyed by "globalId"):
+ * its town, ward and nearest intersection. No foreign key: the two tables belong to
+ * different repos. Filled by `incidents.refresh_incident_locations()`.
+ */
+export const incidentLocations = incidents.table(
+  "incident_locations",
+  {
+    globalId: varchar("global_id", { length: 255 }).primaryKey(),
+    town: text("town"),
+    wardId: text("ward_id"),
+    wardTown: text("ward_town"),
+    intersectionId: text("intersection_id"),
+    distanceToIntersectionM: real("distance_to_intersection_m"),
+    geom: point4326("geom").notNull(),
+    sourceUpdatedAt: timestamp("source_updated_at", { withTimezone: true }),
+    computedAt: timestamp("computed_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("incident_locations_geom_gist").using("gist", t.geom),
+    index("incident_locations_ward_id_idx").on(t.wardId),
+    index("incident_locations_intersection_id_idx").on(t.intersectionId),
+  ],
+);
+
+/**
+ * Read-only declarations of the curated views, which are created by raw SQL in
+ * `0003_curated_views.sql` (Drizzle cannot express their recursive CTE, clustering and
+ * lateral joins). `.existing()` keeps them out of generated migrations and gives typed selects.
+ */
+const geometryOf = (type: string, srid: number) =>
+  customType<{ data: string; driverData: string }>({
+    dataType() {
+      return `geometry(${type},${srid})`;
+    },
+  });
+
+export const wards = geo
+  .materializedView("wards", {
+    wardId: text("ward_id").notNull(),
+    town: text("town").notNull(),
+    wardNumber: integer("ward_number").notNull(),
+    wardName: text("ward_name").notNull(),
+    geom: geometryOf("MultiPolygon", 4326)("geom").notNull(),
+    geomM: geometryOf("MultiPolygon", 2958)("geom_m").notNull(),
+    geomDisplay: geometryOf("MultiPolygon", 4326)("geom_display").notNull(),
+  })
+  .existing();
+
+export const roadSegments = geo
+  .materializedView("road_segments", {
+    segmentId: text("segment_id").notNull(),
+    town: text("town").notNull(),
+    streetName: text("street_name"),
+    streetKey: text("street_key"),
+    roadClass: text("road_class"),
+    classRank: smallint("class_rank").notNull(),
+    geomM: geometryOf("LineString", 2958)("geom_m").notNull(),
+  })
+  .existing();
+
+export const intersections = geo
+  .materializedView("intersections", {
+    intersectionId: text("intersection_id").notNull(),
+    town: text("town").notNull(),
+    streetNames: text("street_names").array().notNull(),
+    label: text("label").notNull(),
+    geom: geometryOf("Point", 4326)("geom").notNull(),
+    geomM: geometryOf("Point", 2958)("geom_m").notNull(),
+  })
+  .existing();
+
+export const integrationQa = incidents
+  .view("integration_qa", {
+    incidentsTotal: bigint("incidents_total", { mode: "number" }).notNull(),
+    incidentsUnlocated: bigint("incidents_unlocated", { mode: "number" }).notNull(),
+    incidentsWithoutWard: bigint("incidents_without_ward", { mode: "number" }).notNull(),
+    wardTownMismatches: bigint("ward_town_mismatches", { mode: "number" }).notNull(),
+    shareNearIntersection: numeric("share_near_intersection"),
+    intersectionsPerTown: jsonb("intersections_per_town").$type<Record<string, number>>().notNull(),
+    unknownDescriptionIncidents: bigint("unknown_description_incidents", {
+      mode: "number",
+    }).notNull(),
+    unknownDescriptions: text("unknown_descriptions").array().notNull(),
+  })
+  .existing();

@@ -1,4 +1,5 @@
 import { defineScheduled } from "void";
+import { refreshCurated, shouldRefreshCurated } from "../src/curated";
 import { connect } from "../src/db";
 import { syncAllLayers } from "../src/sync";
 
@@ -9,11 +10,10 @@ export default defineScheduled(async (_controller, env) => {
   const { HYPERDRIVE } = env as unknown as { HYPERDRIVE: { connectionString: string } };
   const { database, close } = await connect(HYPERDRIVE.connectionString);
   try {
-    await syncAllLayers({
-      database,
-      now: () => new Date(),
-      log: (message) => console.log(message),
-    });
+    const log = (message: string) => console.log(message);
+    const results = await syncAllLayers({ database, now: () => new Date(), log });
+    if (shouldRefreshCurated(results)) await refreshCurated(database, log);
+    else log("refresh_curated: every layer was unchanged, nothing to rebuild");
   } finally {
     await close();
   }

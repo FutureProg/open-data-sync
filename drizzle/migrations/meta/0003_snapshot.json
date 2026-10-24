@@ -1,0 +1,641 @@
+{
+  "id": "05337c58-51f1-4cbb-b313-61f588944a43",
+  "prevId": "976db4d4-58ce-462e-b982-cd22189c5720",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "open_data_sync.arcgis_raw_features": {
+      "name": "arcgis_raw_features",
+      "schema": "open_data_sync",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "bigserial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "layer_id": {
+          "name": "layer_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "data_group": {
+          "name": "data_group",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "source_feature_id": {
+          "name": "source_feature_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "attributes": {
+          "name": "attributes",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "geometry": {
+          "name": "geometry",
+          "type": "geometry(Geometry,4326)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "synced_at": {
+          "name": "synced_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "arcgis_raw_features_data_group_idx": {
+          "name": "arcgis_raw_features_data_group_idx",
+          "columns": [
+            {
+              "expression": "data_group",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        },
+        "arcgis_raw_features_layer_id_idx": {
+          "name": "arcgis_raw_features_layer_id_idx",
+          "columns": [
+            {
+              "expression": "layer_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        },
+        "arcgis_raw_features_geometry_gist": {
+          "name": "arcgis_raw_features_geometry_gist",
+          "columns": [
+            {
+              "expression": "geometry",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "gist",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "arcgis_raw_features_layer_id_arcgis_raw_layers_id_fk": {
+          "name": "arcgis_raw_features_layer_id_arcgis_raw_layers_id_fk",
+          "tableFrom": "arcgis_raw_features",
+          "columnsFrom": [
+            "layer_id"
+          ],
+          "tableTo": "arcgis_raw_layers",
+          "schemaTo": "open_data_sync",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "arcgis_raw_features_layer_source_uq": {
+          "name": "arcgis_raw_features_layer_source_uq",
+          "columns": [
+            "layer_id",
+            "source_feature_id"
+          ],
+          "nullsNotDistinct": false
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "open_data_sync.arcgis_raw_layers": {
+      "name": "arcgis_raw_layers",
+      "schema": "open_data_sync",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "bigserial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "town": {
+          "name": "town",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "data_group": {
+          "name": "data_group",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "service_url": {
+          "name": "service_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "enabled": {
+          "name": "enabled",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "last_synced_at": {
+          "name": "last_synced_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "source_feature_count": {
+          "name": "source_feature_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "source_last_edited_at": {
+          "name": "source_last_edited_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "arcgis_raw_layers_service_url_unique": {
+          "name": "arcgis_raw_layers_service_url_unique",
+          "columns": [
+            "service_url"
+          ],
+          "nullsNotDistinct": false
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "incidents.incident_locations": {
+      "name": "incident_locations",
+      "schema": "incidents",
+      "columns": {
+        "global_id": {
+          "name": "global_id",
+          "type": "varchar(255)",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "town": {
+          "name": "town",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ward_id": {
+          "name": "ward_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ward_town": {
+          "name": "ward_town",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "intersection_id": {
+          "name": "intersection_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "distance_to_intersection_m": {
+          "name": "distance_to_intersection_m",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "geom": {
+          "name": "geom",
+          "type": "geometry(Point,4326)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "source_updated_at": {
+          "name": "source_updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "computed_at": {
+          "name": "computed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "incident_locations_geom_gist": {
+          "name": "incident_locations_geom_gist",
+          "columns": [
+            {
+              "expression": "geom",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "gist",
+          "concurrently": false
+        },
+        "incident_locations_ward_id_idx": {
+          "name": "incident_locations_ward_id_idx",
+          "columns": [
+            {
+              "expression": "ward_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        },
+        "incident_locations_intersection_id_idx": {
+          "name": "incident_locations_intersection_id_idx",
+          "columns": [
+            {
+              "expression": "intersection_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "incidents.incident_type_groups": {
+      "name": "incident_type_groups",
+      "schema": "incidents",
+      "columns": {
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "is_collision": {
+          "name": "is_collision",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "is_injury_or_fatal": {
+          "name": "is_injury_or_fatal",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "geo.layer_field_map": {
+      "name": "layer_field_map",
+      "schema": "geo",
+      "columns": {
+        "town": {
+          "name": "town",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "data_group": {
+          "name": "data_group",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ward_number_field": {
+          "name": "ward_number_field",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ward_name_field": {
+          "name": "ward_name_field",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "street_name_field": {
+          "name": "street_name_field",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "road_class_field": {
+          "name": "road_class_field",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "layer_field_map_town_data_group_pk": {
+          "name": "layer_field_map_town_data_group_pk",
+          "columns": [
+            "town",
+            "data_group"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {},
+  "schemas": {
+    "geo": "geo",
+    "incidents": "incidents",
+    "open_data_sync": "open_data_sync"
+  },
+  "views": {
+    "incidents.integration_qa": {
+      "name": "integration_qa",
+      "schema": "incidents",
+      "columns": {
+        "incidents_total": {
+          "name": "incidents_total",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "incidents_unlocated": {
+          "name": "incidents_unlocated",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "incidents_without_ward": {
+          "name": "incidents_without_ward",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ward_town_mismatches": {
+          "name": "ward_town_mismatches",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "share_near_intersection": {
+          "name": "share_near_intersection",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "intersections_per_town": {
+          "name": "intersections_per_town",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "unknown_description_incidents": {
+          "name": "unknown_description_incidents",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "unknown_descriptions": {
+          "name": "unknown_descriptions",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "materialized": false,
+      "isExisting": true
+    },
+    "geo.intersections": {
+      "name": "intersections",
+      "schema": "geo",
+      "columns": {
+        "intersection_id": {
+          "name": "intersection_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "town": {
+          "name": "town",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "street_names": {
+          "name": "street_names",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "label": {
+          "name": "label",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "geom": {
+          "name": "geom",
+          "type": "geometry(Point,4326)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "geom_m": {
+          "name": "geom_m",
+          "type": "geometry(Point,2958)",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "materialized": true,
+      "isExisting": true
+    },
+    "geo.road_segments": {
+      "name": "road_segments",
+      "schema": "geo",
+      "columns": {
+        "segment_id": {
+          "name": "segment_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "town": {
+          "name": "town",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "street_name": {
+          "name": "street_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "street_key": {
+          "name": "street_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "road_class": {
+          "name": "road_class",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "class_rank": {
+          "name": "class_rank",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "geom_m": {
+          "name": "geom_m",
+          "type": "geometry(LineString,2958)",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "materialized": true,
+      "isExisting": true
+    },
+    "geo.wards": {
+      "name": "wards",
+      "schema": "geo",
+      "columns": {
+        "ward_id": {
+          "name": "ward_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "town": {
+          "name": "town",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ward_number": {
+          "name": "ward_number",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ward_name": {
+          "name": "ward_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "geom": {
+          "name": "geom",
+          "type": "geometry(MultiPolygon,4326)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "geom_m": {
+          "name": "geom_m",
+          "type": "geometry(MultiPolygon,2958)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "geom_display": {
+          "name": "geom_display",
+          "type": "geometry(MultiPolygon,4326)",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "materialized": true,
+      "isExisting": true
+    }
+  },
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}
