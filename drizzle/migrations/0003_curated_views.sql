@@ -23,7 +23,7 @@ INSERT INTO "incidents"."incident_type_groups" ("description", "is_collision", "
 	('IMPAIRED DRIVING', false, false);--> statement-breakpoint
 
 -- "BRANT ST." and "Brant Street" must match. Suffix abbreviations expand when they are not the
--- first word; a trailing N/S/E/W becomes a full direction. "St" is Saint when it starts the name or
+-- first word; a trailing N/S/E/W becomes a full direction. "St" is Saint (written "St.") when it starts the name or
 -- is followed by more of the name ("St Georges Rd", "Louis St Laurent Ave"), and Street when it ends
 -- the name or only a direction follows ("Main St", "King St W").
 CREATE FUNCTION "geo"."normalize_street_name"(raw text) RETURNS text
@@ -52,7 +52,7 @@ BEGIN
 			IF j > i AND rtrim(words[j], '.,') IN ('n', 's', 'e', 'w', 'north', 'south', 'east', 'west') THEN
 				j := j - 1;
 			END IF;
-			w := CASE WHEN i = 1 OR j > i THEN 'saint' ELSE 'street' END;
+			w := CASE WHEN i = 1 OR j > i THEN 'st.' ELSE 'street' END;
 		ELSIF i > 1 THEN
 			w := CASE w
 				WHEN 'st' THEN 'street' WHEN 'str' THEN 'street' WHEN 'rd' THEN 'road'

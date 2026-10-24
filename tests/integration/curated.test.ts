@@ -163,8 +163,8 @@ describe.skipIf(!dockerAvailable)("curated views against PostGIS", () => {
     expect(await normalize("BRANT ST.")).toBe("Brant Street");
     expect(await normalize("Brant Rd")).toBe("Brant Road");
     expect(await normalize("MAIN STREET S")).toBe("Main Street South");
-    expect(await normalize("St Georges Rd")).toBe("Saint Georges Road");
-    expect(await normalize("LOUIS ST. LAURENT AVE")).toBe("Louis Saint Laurent Avenue");
+    expect(await normalize("St Georges Rd")).toBe("St. Georges Road");
+    expect(await normalize("LOUIS ST. LAURENT AVE")).toBe("Louis St. Laurent Avenue");
     expect(await normalize("King St W")).toBe("King Street West");
     expect(await normalize("Main St")).toBe("Main Street");
     expect(await normalize("BELL SCHOOL LINE ( N LEG)")).toBe("Bell School Line");
