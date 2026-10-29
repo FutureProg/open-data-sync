@@ -187,6 +187,7 @@ export const roadSegments = geo
     streetKey: text("street_key"),
     roadClass: text("road_class"),
     classRank: smallint("class_rank").notNull(),
+    controlledAccess: boolean("controlled_access").notNull(),
     geomM: geometryOf("LineString", 2958)("geom_m").notNull(),
   })
   .existing();
