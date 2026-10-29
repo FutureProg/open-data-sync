@@ -9,7 +9,7 @@ DROP MATERIALIZED VIEW "geo"."road_segments";--> statement-breakpoint
 -- The name test, for towns whose layer has no highway attribute (Halton Hills) and as a backstop elsewhere.
 CREATE FUNCTION "geo"."is_highway_name"(street_key text) RETURNS boolean
 LANGUAGE sql IMMUTABLE AS $$
-	SELECT street_key ~* '(^|\s)(qew|q\.e\.w|40[137]|ramp)(\s|$)'
+	SELECT street_key ~* '(^|[^a-z0-9])(qew|q\.e\.w|40[137]|ramp)([^a-z0-9]|$)'
 $$;--> statement-breakpoint
 
 CREATE MATERIALIZED VIEW "geo"."road_segments" AS
@@ -17,7 +17,8 @@ WITH src AS (
 	SELECT
 		l.town,
 		f.source_feature_id,
-		geo.normalize_street_name(f.attributes ->> m.street_name_field) AS street_name,
+		-- initcap writes "Walker'S Line"; a possessive s stays lower case.
+		regexp_replace(geo.normalize_street_name(f.attributes ->> m.street_name_field), '''S\M', '''s', 'g') AS street_name,
 		NULLIF(btrim(f.attributes ->> m.road_class_field), '') AS road_class,
 		f.attributes AS attrs,
 		ST_Transform(f.geometry, 2958) AS geom_m
@@ -25,29 +26,40 @@ WITH src AS (
 	JOIN "open_data_sync"."arcgis_raw_layers" l ON l.id = f.layer_id AND l.enabled
 	JOIN "geo"."layer_field_map" m ON m.town = l.town AND m.data_group = 'road_segments'
 	WHERE f.data_group = 'road_segments' AND f.geometry IS NOT NULL
+), keyed AS (
+	-- The key two segments must share to be one street: no trailing direction ("Main Street South" meets
+	-- "Main Street") and "No" before a number dropped ("No 5 Side Road" is "5 Side Road", "Regional Road No 25"
+	-- is "Regional Road 25").
+	SELECT *,
+		regexp_replace(
+			regexp_replace(street_name, '(^| )No\.? (\d)', '\1\2', 'g'),
+			' (North|South|East|West)$', '') AS street_key
+	FROM src
 )
 SELECT
 	s.town || ':' || s.source_feature_id || '/' || coalesce(d.path[1], 1) AS segment_id,
 	s.town,
 	s.street_name,
-	-- The name without a trailing direction, so "Main Street South" meeting "Main Street" is one street.
-	regexp_replace(s.street_name, ' (North|South|East|West)$', '') AS street_key,
+	s.street_key,
 	s.road_class,
 	-- Lower is more major. Only numeric classes (Milton, Oakville) rank; the rest sort last.
 	CASE WHEN s.road_class ~ '^[1-9]$' THEN s.road_class::smallint ELSE 99::smallint END AS class_rank,
 	-- Controlled-access highways and their ramps: they pass over or beside the streets they meet, not through.
 	-- Each town marks them differently; Halton Hills has no such attribute, so only the name decides there.
-	-- Burlington: STREET_CLASS F (freeway) or R (ramp). Milton: CATEGORY. Oakville: PLAN_CLASS H.
+	-- Burlington: STREET_CLASS F (freeway) or R (ramp), except the city's own links. Milton: CATEGORY, except
+	-- one- or two-digit highways (Highway 7 is an arterial, like 5 and 25). Oakville: PLAN_CLASS H.
 	-- coalesce: a missing attribute is NULL, and NULL must read as "not controlled access".
 	coalesce(
-		geo.is_highway_name(regexp_replace(s.street_name, ' (North|South|East|West)$', ''))
-		OR (s.town = 'Burlington' AND s.attrs ->> 'STREET_CLASS' IN ('F', 'R'))
-		OR (s.town = 'Milton' AND s.attrs ->> 'CATEGORY' IN ('HIGHWAY', 'HIGHWAY RAMP'))
-		OR (s.town = 'Oakville' AND s.attrs ->> 'PLAN_CLASS' = 'H'),
+		geo.is_highway_name(s.street_key)
+		OR (s.town = 'Burlington' AND upper(btrim(s.attrs ->> 'STREET_CLASS')) IN ('F', 'R')
+			AND upper(btrim(s.attrs ->> 'OWNER')) IS DISTINCT FROM 'COB')
+		OR (s.town = 'Milton' AND upper(btrim(s.attrs ->> 'CATEGORY')) IN ('HIGHWAY', 'HIGHWAY RAMP')
+			AND s.street_key !~ '^Highway \d{1,2}$')
+		OR (s.town = 'Oakville' AND upper(btrim(s.attrs ->> 'PLAN_CLASS')) = 'H'),
 		false
 	) AS controlled_access,
 	d.geom::geometry(LineString, 2958) AS geom_m
-FROM src s
+FROM keyed s
 CROSS JOIN LATERAL ST_Dump(s.geom_m) d
 WHERE ST_GeometryType(d.geom) = 'ST_LineString' AND NOT ST_IsEmpty(d.geom);--> statement-breakpoint
 CREATE UNIQUE INDEX "road_segments_segment_id_uq" ON "geo"."road_segments" ("segment_id");--> statement-breakpoint

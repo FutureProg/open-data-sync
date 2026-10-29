@@ -344,6 +344,50 @@ describe.skipIf(!dockerAvailable)("curated views against PostGIS", () => {
       },
     );
 
+    it("ignores a street ending on a highway its layer marks as controlled access", async () => {
+      await addFeature(
+        "Oakville",
+        "road_segments",
+        { FULL_STREET_NAME: "QUEEN ELIZABETH WAY", PLAN_CLASS: "H" },
+        lineString([
+          [-100, 0],
+          [100, 0],
+        ]),
+      );
+      await addRoad("Oakville", "ELM ST", "3", [0, 100], [0, 1]);
+      expect(await intersections()).toHaveLength(0);
+    });
+
+    it("finds a T-junction onto Milton's Highway 7, an arterial its layer files as a highway", async () => {
+      await addFeature(
+        "Milton",
+        "road_segments",
+        { DISPLAY_NAME: "HIGHWAY 7", CATEGORY: "HIGHWAY" },
+        lineString([
+          [-100, 0],
+          [100, 0],
+        ]),
+      );
+      await addRoad("Milton", "ELM ST", "3", [0, 100], [0, 1]);
+      expect((await intersections()).map((row) => row.label)).toEqual(["Elm Street & Highway 7"]);
+    });
+
+    it.each([
+      ["NO 5 SIDE RD", "5 SIDE RD"],
+      ["REGIONAL RD NO 25", "REGIONAL RD 25"],
+    ])("treats %s and %s as one street", async (through, ending) => {
+      await addRoad("Milton", through, "2", [-100, 0], [100, 0]);
+      await addRoad("Milton", ending, "2", [0, 100], [0, 1]);
+      expect(await intersections()).toHaveLength(0);
+    });
+
+    it("writes a possessive s in lower case", async () => {
+      await addPlus(0, 0, "WALKER'S LINE", "ELM ST");
+      expect((await intersections()).map((row) => row.label)).toEqual([
+        "Walker's Line & Elm Street",
+      ]);
+    });
+
     it("merges a boundary road published by two towns", async () => {
       // Milton's copy meets Dundas at x = 0, Oakville's copy 10 m east of it.
       await addRoad("Milton", "TRAFALGAR RD", "1", [0, -100], [0, 0]);
