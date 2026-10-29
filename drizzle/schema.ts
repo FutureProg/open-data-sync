@@ -3,6 +3,7 @@ import {
   bigint,
   boolean,
   customType,
+  doublePrecision,
   index,
   integer,
   jsonb,
@@ -200,6 +201,33 @@ export const intersections = geo
     label: text("label").notNull(),
     geom: geometryOf("Point", 4326)("geom").notNull(),
     geomM: geometryOf("Point", 2958)("geom_m").notNull(),
+  })
+  .existing();
+
+/**
+ * One row per HRPS `case_no` (migration 0006): the de-duplicated incident list. Refreshed by
+ * `incidents.refresh_incident_locations()`.
+ */
+export const incidentsView = incidents
+  .materializedView("incidents", {
+    caseNo: text("case_no").notNull(),
+    globalId: varchar("global_id", { length: 255 }).notNull(),
+    date: timestamp("date", { withTimezone: true }),
+    /** The most serious of `descriptions`. */
+    description: text("description"),
+    descriptions: text("descriptions").array().notNull(),
+    location: text("location"),
+    city: text("city"),
+    latitude: doublePrecision("latitude"),
+    longitude: doublePrecision("longitude"),
+    town: text("town"),
+    wardId: text("ward_id"),
+    wardTown: text("ward_town"),
+    intersectionId: text("intersection_id"),
+    distanceToIntersectionM: real("distance_to_intersection_m"),
+    geom: point4326("geom"),
+    /** How many hrps_data rows were collapsed into this one. */
+    copies: bigint("copies", { mode: "number" }).notNull(),
   })
   .existing();
 
