@@ -425,6 +425,18 @@ describe.skipIf(!dockerAvailable)("curated views against PostGIS", () => {
   });
 
   describe("incident locations", () => {
+    it("refreshes from a session whose search_path leaves out the PostGIS schema", async () => {
+      await addMiltonWards();
+      await refreshViews();
+      await addIncident("in-west", 500, 500);
+      // set_config(..., true) lasts only for this statement's transaction, and so stays on one connection.
+      await db.query(`DO $$ BEGIN
+        PERFORM set_config('search_path', 'geo', true);
+        PERFORM incidents.refresh_incident_locations(true);
+      END $$`);
+      expect((await location("in-west"))!.ward_id).toBe("milton-1");
+    });
+
     it("assigns the covering ward, and the lower ward_id on a shared boundary", async () => {
       await addMiltonWards();
       await refreshViews();
