@@ -1,33 +1,77 @@
 -- Intersections also form where a street ends on the side of another with no segment break (a T-junction).
--- Highway and ramp names are left out (Highway 5 and 25 are arterials, so they stay in), so an overpass is not an intersection. Rebuilds the view; integration_qa
--- reads it, so it is dropped and recreated too.
+-- Controlled-access highways and ramps are left out (Highway 5 and 25 are arterials, so they stay in), so an
+-- overpass is not an intersection. road_segments gains controlled_access, so it is rebuilt along with intersections
+-- and integration_qa, which read it.
 DROP VIEW "incidents"."integration_qa";--> statement-breakpoint
 DROP MATERIALIZED VIEW "geo"."intersections";--> statement-breakpoint
+DROP MATERIALIZED VIEW "geo"."road_segments";--> statement-breakpoint
 
+-- The name test, for towns whose layer has no highway attribute (Halton Hills) and as a backstop elsewhere.
 CREATE FUNCTION "geo"."is_highway_name"(street_key text) RETURNS boolean
 LANGUAGE sql IMMUTABLE AS $$
-	SELECT street_key ~* '(^|\s)(wb|eb|qew|q\.e\.w|40[137])(\s|$)' OR street_key ~* '\sto\s'
+	SELECT street_key ~* '(^|\s)(qew|q\.e\.w|40[137]|ramp)(\s|$)'
 $$;--> statement-breakpoint
+
+CREATE MATERIALIZED VIEW "geo"."road_segments" AS
+WITH src AS (
+	SELECT
+		l.town,
+		f.source_feature_id,
+		geo.normalize_street_name(f.attributes ->> m.street_name_field) AS street_name,
+		NULLIF(btrim(f.attributes ->> m.road_class_field), '') AS road_class,
+		f.attributes AS attrs,
+		ST_Transform(f.geometry, 2958) AS geom_m
+	FROM "open_data_sync"."arcgis_raw_features" f
+	JOIN "open_data_sync"."arcgis_raw_layers" l ON l.id = f.layer_id AND l.enabled
+	JOIN "geo"."layer_field_map" m ON m.town = l.town AND m.data_group = 'road_segments'
+	WHERE f.data_group = 'road_segments' AND f.geometry IS NOT NULL
+)
+SELECT
+	s.town || ':' || s.source_feature_id || '/' || coalesce(d.path[1], 1) AS segment_id,
+	s.town,
+	s.street_name,
+	-- The name without a trailing direction, so "Main Street South" meeting "Main Street" is one street.
+	regexp_replace(s.street_name, ' (North|South|East|West)$', '') AS street_key,
+	s.road_class,
+	-- Lower is more major. Only numeric classes (Milton, Oakville) rank; the rest sort last.
+	CASE WHEN s.road_class ~ '^[1-9]$' THEN s.road_class::smallint ELSE 99::smallint END AS class_rank,
+	-- Controlled-access highways and their ramps: they pass over or beside the streets they meet, not through.
+	-- Each town marks them differently; Halton Hills has no such attribute, so only the name decides there.
+	-- Burlington: STREET_CLASS F (freeway) or R (ramp). Milton: CATEGORY. Oakville: PLAN_CLASS H.
+	-- coalesce: a missing attribute is NULL, and NULL must read as "not controlled access".
+	coalesce(
+		geo.is_highway_name(regexp_replace(s.street_name, ' (North|South|East|West)$', ''))
+		OR (s.town = 'Burlington' AND s.attrs ->> 'STREET_CLASS' IN ('F', 'R'))
+		OR (s.town = 'Milton' AND s.attrs ->> 'CATEGORY' IN ('HIGHWAY', 'HIGHWAY RAMP'))
+		OR (s.town = 'Oakville' AND s.attrs ->> 'PLAN_CLASS' = 'H'),
+		false
+	) AS controlled_access,
+	d.geom::geometry(LineString, 2958) AS geom_m
+FROM src s
+CROSS JOIN LATERAL ST_Dump(s.geom_m) d
+WHERE ST_GeometryType(d.geom) = 'ST_LineString' AND NOT ST_IsEmpty(d.geom);--> statement-breakpoint
+CREATE UNIQUE INDEX "road_segments_segment_id_uq" ON "geo"."road_segments" ("segment_id");--> statement-breakpoint
+CREATE INDEX "road_segments_geom_m_gist" ON "geo"."road_segments" USING gist ("geom_m");--> statement-breakpoint
 
 CREATE MATERIALIZED VIEW "geo"."intersections" AS
 WITH RECURSIVE segment_ends AS (
-	SELECT s.town, s.street_key, s.class_rank, e.pt
+	SELECT s.town, s.street_key, s.class_rank, s.controlled_access, e.pt
 	FROM "geo"."road_segments" s
 	CROSS JOIN LATERAL (VALUES (ST_StartPoint(s.geom_m)), (ST_EndPoint(s.geom_m))) e(pt)
 	WHERE s.street_key IS NOT NULL
 ), ends AS (
-	SELECT * FROM segment_ends
+	SELECT town, street_key, class_rank, pt FROM segment_ends
 	UNION ALL
 	-- A street that ends on the side of another (a T-junction) has no segment break there, so the through
-	-- street gets a point at the same spot. Highways and ramps are skipped: they pass over or beside, not through.
+	-- street gets a point at the same spot. Controlled-access roads are skipped: they pass over or beside, not through.
 	SELECT t.town, t.street_key, t.class_rank, e.pt
 	FROM segment_ends e
 	JOIN "geo"."road_segments" t
 		ON t.street_key IS NOT NULL AND t.street_key <> e.street_key AND ST_DWithin(t.geom_m, e.pt, 3)
 	WHERE NOT ST_DWithin(ST_StartPoint(t.geom_m), e.pt, 3)
 		AND NOT ST_DWithin(ST_EndPoint(t.geom_m), e.pt, 3)
-		AND NOT "geo"."is_highway_name"(e.street_key)
-		AND NOT "geo"."is_highway_name"(t.street_key)
+		AND NOT e.controlled_access
+		AND NOT t.controlled_access
 ), clustered AS (
 	SELECT *, ST_ClusterDBSCAN(pt, 3, 1) OVER () AS cid FROM ends
 ), nodes AS (

@@ -322,6 +322,28 @@ describe.skipIf(!dockerAvailable)("curated views against PostGIS", () => {
       expect(found.map((row) => row.label)).toEqual(["Highway 25 & Elm Street"]);
     });
 
+    it.each([
+      ["Burlington", { MOFULLNAME: "APPLEBY LINE TO HWY 407 WEST", STREET_CLASS: "R" }],
+      ["Burlington", { MOFULLNAME: "EASTPORT DRIVE", STREET_CLASS: "F" }],
+      ["Milton", { DISPLAY_NAME: "ON RAMP", CATEGORY: "HIGHWAY RAMP" }],
+      ["Oakville", { FULL_STREET_NAME: "EXIT AT DUNDAS", PLAN_CLASS: "H" }],
+    ] as const)(
+      "ignores a %s road its layer marks as controlled access",
+      async (town, attributes) => {
+        await addRoad(town, "MAIN ST", "2", [-100, 0], [100, 0]);
+        await addFeature(
+          town,
+          "road_segments",
+          { ...attributes },
+          lineString([
+            [0, 100],
+            [0, 1],
+          ]),
+        );
+        expect(await intersections()).toHaveLength(0);
+      },
+    );
+
     it("merges a boundary road published by two towns", async () => {
       // Milton's copy meets Dundas at x = 0, Oakville's copy 10 m east of it.
       await addRoad("Milton", "TRAFALGAR RD", "1", [0, -100], [0, 0]);
