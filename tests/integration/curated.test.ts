@@ -124,20 +124,26 @@ describe.skipIf(!dockerAvailable)("curated views against PostGIS", () => {
     id: string,
     x: number,
     y: number,
-    extra: { city?: string | null; description?: string } = {},
+    extra: {
+      city?: string | null;
+      description?: string;
+      caseNo?: string;
+      insertedAt?: string;
+    } = {},
   ) {
     const [lon, lat] = toLonLat(x, y);
     await db.query(
       `INSERT INTO safe_streets_halton.hrps_data
-         (case_no, date, description, location, city, latitude, longitude, "globalId")
-       VALUES ($1, now(), $2, 'somewhere', $3, $4, $5, $6)`,
+         (case_no, date, description, location, city, latitude, longitude, "globalId", inserted_at)
+       VALUES ($1, now(), $2, 'somewhere', $3, $4, $5, $6, coalesce($7::timestamptz, now()))`,
       [
-        id,
+        extra.caseNo ?? id,
         extra.description ?? "MVC - PI",
         extra.city === undefined ? "MILTON" : extra.city,
         lat,
         lon,
         id,
+        extra.insertedAt ?? null,
       ],
     );
   }
@@ -536,6 +542,45 @@ describe.skipIf(!dockerAvailable)("curated views against PostGIS", () => {
       expect(Number(await scalar("SELECT count(*) FROM incidents.incident_locations"))).toBe(3);
 
       expect(await refreshLocations(true)).toBe(3);
+    });
+  });
+
+  describe("incidents.incidents", () => {
+    it("keeps one row per case_no, preferring a copy on an intersection, then the latest load", async () => {
+      await addMiltonWards();
+      await addPlus(500, 500, "MAIN ST", "ELM ST");
+      // Case A: an older copy on the intersection beats a newer one far away.
+      await addIncident("a1", 505, 500, { caseNo: "A", insertedAt: "2026-10-14" });
+      await addIncident("a2", 800, 800, { caseNo: "A", insertedAt: "2026-10-20" });
+      // Case B: neither is near an intersection, so the latest load wins.
+      await addIncident("b1", 300, 300, { caseNo: "B", insertedAt: "2026-10-14" });
+      await addIncident("b2", 310, 310, { caseNo: "B", insertedAt: "2026-10-20" });
+      // Case C: same load and no intersection, so the most recently updated copy wins; two categories, the more serious is the description.
+      await addIncident("c1", 300, 800, {
+        caseNo: "C",
+        description: "MVC - PI",
+        insertedAt: "2026-10-14",
+      });
+      await addIncident("c2", 300, 800, {
+        caseNo: "C",
+        description: "mvc - fatality ",
+        insertedAt: "2026-10-14",
+      });
+      await refreshViews();
+      await refreshLocations();
+
+      const found = await rows(
+        "SELECT case_no, global_id, description, descriptions, copies FROM incidents.incidents ORDER BY case_no",
+      );
+      expect(found.map((r) => [r.case_no, r.global_id, Number(r.copies)])).toEqual([
+        ["A", "a1", 2],
+        ["B", "b2", 2],
+        ["C", "c2", 2],
+      ]);
+      expect(found[2]).toMatchObject({
+        description: "MVC - FATALITY",
+        descriptions: ["MVC - FATALITY", "MVC - PI"],
+      });
     });
   });
 

@@ -43,6 +43,13 @@
       "when": 1792696000000,
       "tag": "0005_refresh_search_path",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1792697000000,
+      "tag": "0006_incidents_view",
+      "breakpoints": true
     }
   ]
 }
