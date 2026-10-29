@@ -204,9 +204,12 @@ export const intersections = geo
   })
   .existing();
 
-/** One row per HRPS `case_no` (migration 0006): the de-duplicated incident list. */
+/**
+ * One row per HRPS `case_no` (migration 0006): the de-duplicated incident list. Refreshed by
+ * `incidents.refresh_incident_locations()`.
+ */
 export const incidentsView = incidents
-  .view("incidents", {
+  .materializedView("incidents", {
     caseNo: text("case_no").notNull(),
     globalId: varchar("global_id", { length: 255 }).notNull(),
     date: timestamp("date", { withTimezone: true }),
