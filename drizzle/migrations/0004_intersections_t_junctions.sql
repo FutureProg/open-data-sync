@@ -17,8 +17,11 @@ WITH src AS (
 	SELECT
 		l.town,
 		f.source_feature_id,
-		-- initcap writes "Walker'S Line"; a possessive s stays lower case.
-		regexp_replace(geo.normalize_street_name(f.attributes ->> m.street_name_field), '''S\M', '''s', 'g') AS street_name,
+		-- initcap writes "Walker'S Line"; a possessive s stays lower case. Burlington's "Walker's Line" is a typo
+		-- for Walkers Line, which its other segments (and ramp names) use.
+		replace(
+			regexp_replace(geo.normalize_street_name(f.attributes ->> m.street_name_field), '''S\M', '''s', 'g'),
+			'Walker''s Line', 'Walkers Line') AS street_name,
 		NULLIF(btrim(f.attributes ->> m.road_class_field), '') AS road_class,
 		f.attributes AS attrs,
 		ST_Transform(f.geometry, 2958) AS geom_m

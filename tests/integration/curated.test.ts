@@ -382,10 +382,16 @@ describe.skipIf(!dockerAvailable)("curated views against PostGIS", () => {
     });
 
     it("writes a possessive s in lower case", async () => {
-      await addPlus(0, 0, "WALKER'S LINE", "ELM ST");
+      await addPlus(0, 0, "KING'S COLLEGE DR", "ELM ST");
       expect((await intersections()).map((row) => row.label)).toEqual([
-        "Walker's Line & Elm Street",
+        "King's College Drive & Elm Street",
       ]);
+    });
+
+    it("reads Burlington's Walker's Line as Walkers Line", async () => {
+      await addRoad("Burlington", "WALKER'S LINE", undefined, [-100, 0], [100, 0]);
+      await addRoad("Burlington", "WALKERS LINE", undefined, [0, 100], [0, 1]);
+      expect(await intersections()).toHaveLength(0);
     });
 
     it("merges a boundary road published by two towns", async () => {
