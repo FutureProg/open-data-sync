@@ -1,12 +1,12 @@
 -- Intersections also form where a street ends on the side of another with no segment break (a T-junction).
--- Highway and ramp names are left out, so an overpass is not an intersection. Rebuilds the view; integration_qa
+-- Highway and ramp names are left out (Highway 5 and 25 are arterials, so they stay in), so an overpass is not an intersection. Rebuilds the view; integration_qa
 -- reads it, so it is dropped and recreated too.
 DROP VIEW "incidents"."integration_qa";--> statement-breakpoint
 DROP MATERIALIZED VIEW "geo"."intersections";--> statement-breakpoint
 
 CREATE FUNCTION "geo"."is_highway_name"(street_key text) RETURNS boolean
 LANGUAGE sql IMMUTABLE AS $$
-	SELECT street_key ~* '(^|\s)(hwy|highway|wb|eb|qew|q\.e\.w|40[137])(\s|$)' OR street_key ~* '\sto\s'
+	SELECT street_key ~* '(^|\s)(wb|eb|qew|q\.e\.w|40[137])(\s|$)' OR street_key ~* '\sto\s'
 $$;--> statement-breakpoint
 
 CREATE MATERIALIZED VIEW "geo"."intersections" AS

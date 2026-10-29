@@ -315,6 +315,13 @@ describe.skipIf(!dockerAvailable)("curated views against PostGIS", () => {
       expect(await intersections()).toHaveLength(0);
     });
 
+    it("finds a T-junction onto Highway 25, which is an arterial road", async () => {
+      await addRoad("Milton", "HIGHWAY 25", "2", [-100, 0], [100, 0]);
+      await addRoad("Milton", "ELM ST", "3", [0, 100], [0, 1]);
+      const found = await intersections();
+      expect(found.map((row) => row.label)).toEqual(["Highway 25 & Elm Street"]);
+    });
+
     it("merges a boundary road published by two towns", async () => {
       // Milton's copy meets Dundas at x = 0, Oakville's copy 10 m east of it.
       await addRoad("Milton", "TRAFALGAR RD", "1", [0, -100], [0, 0]);
