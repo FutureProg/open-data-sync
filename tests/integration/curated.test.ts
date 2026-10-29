@@ -298,6 +298,23 @@ describe.skipIf(!dockerAvailable)("curated views against PostGIS", () => {
       expect(found[0]!.label).toBe("Main Street & Elm Street");
     });
 
+    it("finds a T-junction where a street ends on the side of another", async () => {
+      await addRoad("Milton", "MAIN ST", "2", [-100, 0], [100, 0]);
+      await addRoad("Milton", "ELM ST", "3", [0, 100], [0, 1]);
+      const found = await intersections();
+      expect(found).toHaveLength(1);
+      expect(found[0]).toMatchObject({
+        label: "Main Street & Elm Street",
+        street_names: ["Main Street", "Elm Street"],
+      });
+    });
+
+    it("does not treat a ramp ending beside a road as an intersection", async () => {
+      await addRoad("Milton", "MAIN ST", "2", [-100, 0], [100, 0]);
+      await addRoad("Milton", "HWY 407 WB MAIN TO ELM", "1", [0, 100], [0, 1]);
+      expect(await intersections()).toHaveLength(0);
+    });
+
     it("merges a boundary road published by two towns", async () => {
       // Milton's copy meets Dundas at x = 0, Oakville's copy 10 m east of it.
       await addRoad("Milton", "TRAFALGAR RD", "1", [0, -100], [0, 0]);
