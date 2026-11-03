@@ -21,10 +21,9 @@ export async function connect(
 ): Promise<{ database: Database; close: () => Promise<void> }> {
   const url = new URL(connectionString);
   if (caCertificate) url.searchParams.delete("sslmode");
-  // `prepare: false`: Hyperdrive pools in transaction mode, where named prepared statements do not survive.
+  // Prepared statements stay on (the default): Cloudflare advises against `prepare: false` with Hyperdrive.
   const client = postgres(url.toString(), {
     max: 1,
-    prepare: false,
     ...(caCertificate ? { ssl: { ca: caCertificate, rejectUnauthorized: true } } : {}),
   });
   return { database: drizzle(client, { schema }), close: () => client.end() };
