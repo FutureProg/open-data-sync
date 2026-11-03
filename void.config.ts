@@ -17,8 +17,6 @@ export default defineConfig({
         id: "19ea5aa02771494897c2cf7998977211",
       },
     ],
-    preview_urls: true,
-    workers_dev: true,
     // Workers Logs and real-time Issues. Cloudflare turns them off for any version
     // deployed without them, so they have to be declared here.
     observability: {
