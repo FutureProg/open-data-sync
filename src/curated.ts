@@ -15,7 +15,7 @@ export function shouldRefreshCurated(results: readonly LayerSyncResult[]): boole
 
 /** Log the one-row data quality view (`incidents.integration_qa`). */
 export async function logIntegrationQa(database: Database, log: Log): Promise<void> {
-  const { rows } = await database.execute(sql`SELECT * FROM incidents.integration_qa`);
+  const rows = await database.execute(sql`SELECT * FROM incidents.integration_qa`);
   log(`integration_qa: ${JSON.stringify(rows[0])}`);
 }
 
@@ -26,7 +26,7 @@ export async function logIntegrationQa(database: Database, log: Log): Promise<vo
 export async function refreshCurated(database: Database, log: Log): Promise<void> {
   await database.execute(sql`SELECT geo.refresh_curated()`);
   log("geo.refresh_curated: rebuilt wards, road segments and intersections");
-  const { rows } = await database.execute<{ written: number }>(
+  const rows = await database.execute<{ written: number }>(
     sql`SELECT incidents.refresh_incident_locations(true) AS written`,
   );
   log(
@@ -37,7 +37,7 @@ export async function refreshCurated(database: Database, log: Log): Promise<void
 
 /** Locate incidents that are new or changed since their location was computed. */
 export async function refreshIncidentLocations(database: Database, log: Log): Promise<void> {
-  const { rows } = await database.execute<{ written: number }>(
+  const rows = await database.execute<{ written: number }>(
     sql`SELECT incidents.refresh_incident_locations() AS written`,
   );
   log(`incidents.refresh_incident_locations: wrote ${rows[0]?.written ?? 0} incident locations`);

@@ -1,8 +1,8 @@
 import { execFileSync } from "node:child_process";
-import { migrate } from "drizzle-orm/node-postgres/migrator";
+import { migrate } from "drizzle-orm/postgres-js/migrator";
 import { PostgreSqlContainer } from "@testcontainers/postgresql";
-import { Pool } from "pg";
-import { drizzle } from "drizzle-orm/node-postgres";
+import { drizzle } from "drizzle-orm/postgres-js";
+import postgres from "postgres";
 import * as schema from "../../drizzle/schema";
 import type { Database } from "../../src/db";
 
@@ -30,7 +30,13 @@ export interface TestDatabase {
  */
 export async function startTestDatabase(): Promise<TestDatabase> {
   const container = await new PostgreSqlContainer("postgis/postgis:16-3.4").start();
-  const pool = new Pool({ connectionString: container.getConnectionUri() });
+  // One connection, like the Worker's, so session-level state (set_config, temp tables) stays put.
+  const client = postgres(container.getConnectionUri(), { max: 1, onnotice: () => {} });
+  const pool = {
+    query: async (text: string, values?: unknown[]) => ({
+      rows: [...(await client.unsafe<Record<string, unknown>[]>(text, values as never[]))],
+    }),
+  };
   await pool.query("CREATE EXTENSION IF NOT EXISTS postgis");
   await pool.query("CREATE SCHEMA IF NOT EXISTS open_data_sync");
   await pool.query("CREATE SCHEMA IF NOT EXISTS geo");
@@ -49,7 +55,7 @@ export async function startTestDatabase(): Promise<TestDatabase> {
     inserted_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now()
   )`);
-  const database = drizzle(pool, { schema });
+  const database = drizzle(client, { schema });
   await migrate(database, {
     migrationsFolder: "drizzle/migrations",
     migrationsSchema: "open_data_sync",
@@ -64,7 +70,7 @@ export async function startTestDatabase(): Promise<TestDatabase> {
       await pool.query("TRUNCATE safe_streets_halton.hrps_data");
     },
     stop: async () => {
-      await pool.end();
+      await client.end();
       await container.stop();
     },
   };

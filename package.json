@@ -21,12 +21,11 @@
     "@esri/arcgis-rest-feature-service": "^4.11.0",
     "@esri/arcgis-rest-request": "^4.11.0",
     "drizzle-orm": "^0.45.4",
-    "pg": "^8.23.1"
+    "postgres": "^4.0.0"
   },
   "devDependencies": {
     "@testcontainers/postgresql": "^12.2.1",
     "@types/node": "^26.6.5",
-    "@types/pg": "^8.23.1",
     "drizzle-kit": "^0.31.11",
     "testcontainers": "^12.2.1",
     "tsx": "^4.23.15",

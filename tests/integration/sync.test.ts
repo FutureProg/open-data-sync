@@ -116,7 +116,7 @@ describe.skipIf(!dockerAvailable)("sync against PostGIS", () => {
     log: () => {},
   });
   const rows = async (query: ReturnType<typeof sql>) =>
-    (await testDatabase.database.execute(query)).rows as Record<string, unknown>[];
+    [...(await testDatabase.database.execute(query))] as Record<string, unknown>[];
 
   beforeAll(async () => {
     testDatabase = await startTestDatabase();
