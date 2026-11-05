@@ -1,16 +1,16 @@
 # open-data-sync
 
-A small Cloudflare Worker, built with [Void](https://void.cloud), that syncs public municipal ArcGIS map layers (Burlington, Oakville, Milton and Halton Hills) into an existing DigitalOcean PostgreSQL database with PostGIS, every week.
+A small Cloudflare Worker, built and deployed with the [`cf` CLI](https://developers.cloudflare.com/cf/), that syncs public municipal ArcGIS map layers (Burlington, Oakville, Milton and Halton Hills) into an existing DigitalOcean PostgreSQL database with PostGIS, every week.
 
 See [CONTEXT.md](./CONTEXT.md) for the vocabulary used here.
 
 ## What it does
 
-- A weekly cron (`crons/sync-arcgis-layers.ts`, Tuesdays at 00:00 UTC) connects to Postgres, calls `syncAllLayers`, and, if at least one layer was downloaded and none failed, calls `geo.refresh_curated()` and then `incidents.refresh_incident_locations(true)`.
-- A daily cron (`crons/refresh-incident-locations.ts`, 19:00 UTC, an hour after the HRPS pipeline's 18:00 sync) calls `incidents.refresh_incident_locations()`. Both crons log the one-row `incidents.integration_qa` view.
+- A weekly cron (`syncArcgisLayers` in `src/jobs.ts`, Tuesdays at 00:00 UTC) connects to Postgres, calls `syncAllLayers`, and, if at least one layer was downloaded and none failed, calls `geo.refresh_curated()` and then `incidents.refresh_incident_locations(true)`.
+- A daily cron (`refreshIncidentLocationsJob` in `src/jobs.ts`, 19:00 UTC, an hour after the HRPS pipeline's 18:00 sync) calls `incidents.refresh_incident_locations()`. Both crons log the one-row `incidents.integration_qa` view.
 - The layers to sync are listed in `src/layers.ts`.
 - Raw data lands in the `open_data_sync` schema, curated data in `geo` and `incidents` (see below), via Drizzle ORM, through a [Hyperdrive](https://developers.cloudflare.com/hyperdrive/) config that holds the database's CA (Workers cannot verify a private CA on a direct connection).
-- Deployed straight to your own Cloudflare account with the Void CLI (not the Void platform).
+- Deployed straight to your own Cloudflare account with `cf deploy`. The Worker entry is `src/worker.ts`; its `scheduled()` handler picks the job from the cron string. The schedules live in `src/schedules.ts` and are registered in `cloudflare.config.ts`, so the config and the handler share one definition.
 
 ## How a sync works
 
@@ -92,52 +92,52 @@ The opt-in baseline test (`tests/integration/baseline.test.ts`) syncs the live l
 
 ## Environment variables
 
-Void reads local values from a single `.env` file only (copy `example.env` to `.env`; Void rejects `.env.example`). The schema is declared in `env.ts`.
+Local values live in a `.env` file (copy `example.env` to `.env`). The Worker itself reads none of them.
 
 | Variable                                                   | Used for                                                                                      |
 | ---------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
 | `DATABASE_URL`                                             | PostgreSQL connection string. Only for manual migrations (`pnpm db:migrate`); never deployed. |
 | `DB_CA_CERT`                                               | The database's CA certificate (PEM), used by drizzle-kit for verified TLS.                    |
-| `CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE` | Where `vp dev` connects for the `HYPERDRIVE` binding. Use a local Postgres.                   |
+| `HYPERDRIVE_ID`                                            | Hyperdrive config ID, read by `cloudflare.config.ts` at deploy time so it is not committed.   |
+| `CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE` | Where `cf dev` connects for the `HYPERDRIVE` binding. Use a local Postgres.                   |
 | `CLOUDFLARE_API_TOKEN`                                     | Non-interactive deploys (CI). Workers Scripts: Edit.                                          |
 | `CLOUDFLARE_ACCOUNT_ID`                                    | Needed when the token can reach several accounts.                                             |
 
-Never commit `.env`. Local `.env` values are never deployed. The deployed Worker needs no secrets: its database access comes from the Hyperdrive config.
+Never commit `.env`. Local `.env` values are never deployed. `cf` keeps its own login (`cf auth login`); a Wrangler login is not reused, and only API tokens work, not the Global API Key. The deployed Worker needs no secrets: its database access comes from the Hyperdrive config.
 
 ## Local development
 
-Void requires Node 24.21 or newer. The project uses pnpm and [Vite+](https://viteplus.dev) (`vp`).
+The project needs the Node version in `package.json` `engines`, and uses pnpm and [Vite+](https://viteplus.dev) (`vp`). `cf build` and `cf dev` delegate to `vp`.
 
 ```sh
 pnpm install
 cp example.env .env        # fill in DATABASE_URL/DB_CA_CERT (migrations) and a local Postgres for dev
-pnpm exec vp dev           # or: pnpm dev
+pnpm dev                   # cf dev
 pnpm test                  # unit tests, plus PostGIS integration tests when Docker is running
 pnpm exec vp check         # format, lint, type check
-pnpm typecheck             # tsc
+pnpm typecheck             # cf workers types (writes .cloudflare/types) and tsc
 pnpm db:generate           # generate a migration after editing drizzle/schema.ts
 pnpm db:migrate            # apply migrations by hand (needs DATABASE_URL and DB_CA_CERT)
 ```
 
 The integration tests (`tests/integration`) start a throwaway `postgis/postgis` container with Testcontainers, create the schemas, the extension and a stand-in `hrps_data` table in test setup, and apply the real migrations. They are skipped with a warning when Docker is not available.
 
-Schedules do not fire locally. Trigger one with the dev token Void prints at start-up:
+Schedules do not fire by themselves locally. The dispatch from cron string to job is covered by `tests/worker.test.ts`, and `pnpm build` produces the same bundle that deploys.
 
-```sh
-curl -X POST http://localhost:5173/__void/scheduled \
-  -H "Content-Type: application/json" -H "x-void-dev-trigger: <token>" \
-  -d '{"cron":"0 6 * * 1","scheduledTime":'"$(date +%s000)"'}'
-```
-
-To run the sync once by hand, for example after a missed cron, use `pnpm sync:once`. It runs in plain Node and connects to the database in `.env` (`DATABASE_URL`, with `DB_CA_CERT` for verified TLS), so it writes to that database. Leave `DB_CA_CERT` empty to use a local, non-TLS Postgres. It must not run inside workerd (`vp dev`), which cannot verify the DigitalOcean CA.
+To run the sync once by hand, for example after a missed cron, use `pnpm sync:once`. It runs in plain Node and connects to the database in `.env` (`DATABASE_URL`, with `DB_CA_CERT` for verified TLS), so it writes to that database. Leave `DB_CA_CERT` empty to use a local, non-TLS Postgres. It must not run inside workerd (`cf dev`), which cannot verify the DigitalOcean CA.
 
 ## Deploy
 
 ```sh
-pnpm exec void deploy --platform cloudflare     # or: pnpm run deploy:cf
+export HYPERDRIVE_ID=<Hyperdrive config ID>    # see below; never committed
+pnpm build                                      # cf build
+npx cf deploy --dry-run                         # builds and checks, no API calls
+pnpm deploy                                     # cf deploy
 ```
 
-The first run signs in to Cloudflare in a browser. Before the first deploy, run `pnpm db:migrate` and create the Hyperdrive config once (Wrangler 4.9+):
+Sign in once with `cf auth login`, or set `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`. The config declares Workers Logs and Issues; Cloudflare turns them off for any version deployed without them, so deploy only through `cf deploy`. After a deploy, check in the Cloudflare dashboard that the new version is active, both crons are listed, and Hyperdrive is bound.
+
+Before the first deploy, run `pnpm db:migrate` and create the Hyperdrive config once (shown with Wrangler 4.9+):
 
 ```sh
 npx wrangler cert upload certificate-authority --ca-cert ca.pem --name open-data-sync-db-ca
@@ -145,13 +145,13 @@ npx wrangler hyperdrive create open-data-sync --connection-string="postgresql://
   --ca-certificate-id <id from the upload> --sslmode verify-full
 ```
 
-Put the returned config ID in `cloudflare.hyperdrive` in `void.config.ts`. Commit `void.lock.json` once Void creates it.
+Use the returned config ID as `HYPERDRIVE_ID`. `cf` has no live log tail yet: use `npx wrangler tail open-data-sync` or Workers Logs in the dashboard.
 
 ## Notes
 
-- **Migrations are manual.** Void's database layer is not used, so `void deploy` does not touch the database. Run `pnpm db:migrate` (drizzle-kit) yourself; it records progress in `open_data_sync.__drizzle_migrations`, so nothing is written outside the schema. The migration SQL does not run `CREATE SCHEMA` or `CREATE EXTENSION`, but drizzle's migrator runs `CREATE SCHEMA IF NOT EXISTS open_data_sync` for its tracking table, which Postgres refuses without `CREATE` on the database. Grant it once: `GRANT CREATE ON DATABASE <db> TO "<role>";`.
+- **Migrations are manual.** `cf deploy` does not touch the database. Run `pnpm db:migrate` (drizzle-kit) yourself; it records progress in `open_data_sync.__drizzle_migrations`, so nothing is written outside the schema. The migration SQL does not run `CREATE SCHEMA` or `CREATE EXTENSION`, but drizzle's migrator runs `CREATE SCHEMA IF NOT EXISTS open_data_sync` for its tracking table, which Postgres refuses without `CREATE` on the database. Grant it once: `GRANT CREATE ON DATABASE <db> TO "<role>";`.
 - **The `open_data_sync`, `geo` and `incidents` schemas must already exist**, and the role must be able to create tables in them.
 - **PostGIS must be enabled** in the database (the owner says it already is). Migrations rely on it but never enable it.
 - **DigitalOcean trusted sources** may need to allow Cloudflare, since Workers have no fixed outgoing IP. Verify this against your database settings.
-- **TLS.** Hyperdrive verifies the database against the uploaded CA (`verify-full`). The Worker's own connection to Hyperdrive has no TLS. Local `vp dev` cannot reach the DigitalOcean database directly for the same reason, so point it at a local Postgres.
+- **TLS.** Hyperdrive verifies the database against the uploaded CA (`verify-full`). The Worker's own connection to Hyperdrive has no TLS. Local `cf dev` cannot reach the DigitalOcean database directly for the same reason, so point it at a local Postgres.
 - Layers whose URL is `TODO` in `src/layers.ts` are skipped until resolved.
