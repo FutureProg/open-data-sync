@@ -4,18 +4,17 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vp dev",
-    "build": "vp build",
+    "dev": "cf dev",
+    "build": "cf build",
     "test": "vp test run",
     "check": "vp check",
-    "typecheck": "void prepare && tsc --noEmit",
+    "typecheck": "cf workers types && tsc --noEmit",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:status": "drizzle-kit check",
     "sync:once": "tsx --env-file=.env scripts/sync-once.ts",
     "prepare": "vp config",
-    "deploy:cf": "void deploy --platform cloudflare",
-    "deploy": "void deploy --platform cloudflare"
+    "deploy": "cf deploy"
   },
   "dependencies": {
     "@esri/arcgis-rest-feature-service": "^4.11.0",
@@ -24,15 +23,17 @@
     "pg": "^8.23.1"
   },
   "devDependencies": {
+    "@cloudflare/vite-plugin": "2.0.0-beta.v.10",
     "@testcontainers/postgresql": "^12.2.1",
     "@types/node": "^26.6.5",
     "@types/pg": "^8.23.1",
+    "cf": "1.0.0-beta.27",
     "drizzle-kit": "^0.31.11",
     "testcontainers": "^12.2.1",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
-    "vite-plus": "^1.3.0",
-    "void": "^1.1.11"
+    "vite": "catalog:",
+    "vite-plus": "^1.3.0"
   },
   "engines": {
     "node": ">=24.21.0"

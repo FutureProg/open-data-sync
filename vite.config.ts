@@ -1,9 +1,9 @@
-import { voidPlugin } from "void";
+import { cloudflare } from "@cloudflare/vite-plugin";
 import { defineConfig } from "vite-plus";
 
 export default defineConfig({
-  // The Void/Cloudflare plugin boots workerd, which unit tests do not need.
-  plugins: process.env.VITEST ? [] : [voidPlugin()],
+  // The Cloudflare plugin boots workerd, which unit tests do not need.
+  plugins: process.env.VITEST ? [] : [cloudflare()],
   staged: {
     "*": "vp check --fix",
   },
@@ -14,6 +14,6 @@ export default defineConfig({
     include: ["tests/**/*.test.ts"],
   },
   fmt: {
-    ignorePatterns: ["drizzle/migrations", ".void", "dist"],
+    ignorePatterns: ["drizzle/migrations", ".cloudflare", "dist"],
   },
 });

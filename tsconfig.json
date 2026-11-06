@@ -1,12 +1,25 @@
 {
-  "extends": "./.void/tsconfig.json",
   "compilerOptions": {
+    "target": "es2024",
+    "lib": ["es2024"],
+    "module": "preserve",
+    "moduleResolution": "bundler",
+    "types": ["node"],
     "strict": true,
     "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "isolatedModules": true,
     "skipLibCheck": true
   },
-  // Void's generated tsconfig lists routes.d.ts, which it does not emit for a cron-only Worker.
-  "files": [".void/env.d.ts"],
-  "include": ["**/*.ts"],
-  "exclude": ["node_modules", "dist", ".void/dist"]
+  "include": [
+    "src",
+    "scripts",
+    "tests",
+    "drizzle",
+    "drizzle.config.ts",
+    "cloudflare.config.ts",
+    "vite.config.ts",
+    ".cloudflare/types"
+  ],
+  "exclude": ["node_modules", "dist"]
 }
