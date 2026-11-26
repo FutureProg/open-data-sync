@@ -254,6 +254,156 @@ describe.skipIf(!dockerAvailable)("curated views against PostGIS", () => {
     });
   });
 
+  describe("road tier", () => {
+    /** Two streets crossing at the origin, each split at the junction, with their own source attributes. */
+    async function addCross(
+      town: Town,
+      horizontal: Record<string, unknown>,
+      vertical: Record<string, unknown>,
+    ) {
+      const name = roadFields[town].name;
+      const segments: [Record<string, unknown>, XY[]][] = [
+        [
+          horizontal,
+          [
+            [-100, 0],
+            [0, 0],
+          ],
+        ],
+        [
+          horizontal,
+          [
+            [0, 0],
+            [100, 0],
+          ],
+        ],
+        [
+          vertical,
+          [
+            [0, -100],
+            [0, 0],
+          ],
+        ],
+        [
+          vertical,
+          [
+            [0, 0],
+            [0, 100],
+          ],
+        ],
+      ];
+      for (const [attrs, points] of segments) {
+        await addFeature(town, "road_segments", { [name]: "x", ...attrs }, lineString(points));
+      }
+    }
+    const tierOf = async () => {
+      const found = await intersections();
+      expect(found).toHaveLength(1);
+      return found[0]!.road_tier;
+    };
+
+    it("takes the biggest road at the crossing (Milton CATEGORY)", async () => {
+      await addCross(
+        "Milton",
+        { DISPLAY_NAME: "MAIN ST", CATEGORY: "MAJOR ARTERIAL" },
+        { DISPLAY_NAME: "ELM ST", CATEGORY: "LOCAL" },
+      );
+      expect(await tierOf()).toBe("arterial");
+    });
+
+    it("calls a collector meeting a local street a collector", async () => {
+      await addCross(
+        "Milton",
+        { DISPLAY_NAME: "MAIN ST", CATEGORY: "COLLECTOR" },
+        { DISPLAY_NAME: "ELM ST", CATEGORY: "LOCAL" },
+      );
+      expect(await tierOf()).toBe("collector");
+    });
+
+    it("calls two local streets local", async () => {
+      await addCross(
+        "Milton",
+        { DISPLAY_NAME: "MAIN ST", CATEGORY: "LOCAL" },
+        { DISPLAY_NAME: "ELM ST", CATEGORY: "PRIVATE" },
+      );
+      expect(await tierOf()).toBe("local");
+    });
+
+    it("reads Burlington's OPTRCLASS: AR/MA/MP arterial, CL collector, blank local", async () => {
+      await addCross(
+        "Burlington",
+        { MOFULLNAME: "APPLEBY LINE", OPTRCLASS: "MA" },
+        { MOFULLNAME: "ELM ST", OPTRCLASS: " " },
+      );
+      expect(await tierOf()).toBe("arterial");
+      await db.reset();
+      await addCross(
+        "Burlington",
+        { MOFULLNAME: "CAVENDISH DRIVE", OPTRCLASS: "CL" },
+        { MOFULLNAME: "ELM ST", OPTRCLASS: " " },
+      );
+      expect(await tierOf()).toBe("collector");
+      await db.reset();
+      await addCross(
+        "Burlington",
+        { MOFULLNAME: "ELM ST", OPTRCLASS: " " },
+        { MOFULLNAME: "OAK ST", OPTRCLASS: " " },
+      );
+      expect(await tierOf()).toBe("local");
+      await db.reset();
+      await addCross(
+        "Burlington",
+        { MOFULLNAME: "APPLEBY LINE", OPTRCLASS: " ", STREETSEGMENTCLASSPICK: "Arterial" },
+        { MOFULLNAME: "ELM ST", OPTRCLASS: " " },
+      );
+      expect(await tierOf()).toBe("arterial");
+    });
+
+    it("reads Oakville's PLAN_CLASS", async () => {
+      await addCross(
+        "Oakville",
+        { FULL_STREET_NAME: "THIRD LINE", PLAN_CLASS: "A" },
+        { FULL_STREET_NAME: "ELM ST", PLAN_CLASS: "L" },
+      );
+      expect(await tierOf()).toBe("arterial");
+    });
+
+    it("classes Halton Hills roads by jurisdiction: Regional and Provincial are arterials, the rest unknown", async () => {
+      await addCross(
+        "Halton Hills",
+        { STR_FULL: "TRAFALGAR ROAD", STR_JURI: "Regional" },
+        { STR_FULL: "ELM ST", STR_JURI: "Halton Hills" },
+      );
+      expect(await tierOf()).toBe("arterial");
+      await db.reset();
+      await addCross(
+        "Halton Hills",
+        { STR_FULL: "MAIN ST", STR_JURI: "Halton Hills" },
+        { STR_FULL: "ELM ST", STR_JURI: "Private" },
+      );
+      expect(await tierOf()).toBe("unknown");
+    });
+
+    it("does not let a controlled-access ramp raise the tier", async () => {
+      await addCross(
+        "Milton",
+        { DISPLAY_NAME: "ELM ST", CATEGORY: "LOCAL" },
+        { DISPLAY_NAME: "RAMP TO 401", CATEGORY: "HIGHWAY RAMP" },
+      );
+      expect(await tierOf()).toBe("local");
+    });
+
+    it("exposes the numeric rank alongside the name", async () => {
+      await addCross(
+        "Milton",
+        { DISPLAY_NAME: "MAIN ST", CATEGORY: "MINOR ARTERIAL" },
+        { DISPLAY_NAME: "ELM ST", CATEGORY: "LOCAL" },
+      );
+      const [row] = await intersections();
+      expect(row).toMatchObject({ road_tier: "arterial", road_tier_rank: 1 });
+    });
+  });
+
   describe("intersections view", () => {
     it("finds a crossing of two streets and orders names by class rank, then name", async () => {
       await addPlus(0, 0, "MAIN ST", "ELM ST", "Milton", "1", "3");
