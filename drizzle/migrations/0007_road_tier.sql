@@ -2,7 +2,7 @@
 -- Each town classifies roads differently, so geo.road_tier_rank maps its own attribute to one scale:
 -- 1 arterial, 2 collector, 3 local, 9 unknown (no class in the source, or a controlled-access road, which does not
 -- count towards an intersection's tier). geo.intersections.road_tier is the biggest road meeting there.
--- Burlington: OPTRCLASS (AR/MA/MP arterial, CL collector, blank local). Oakville: PLAN_CLASS (A/R arterial,
+-- Burlington: OPTRCLASS (AR/MA/MP arterial, CL collector, blank local) or STREETSEGMENTCLASSPICK = Arterial. Oakville: PLAN_CLASS (A/R arterial,
 -- M/C/I collector, L/O local). Milton: CATEGORY. Halton Hills has no class, so STR_JURI: Regional and Provincial
 -- roads are arterials and everything else is unknown (town roads cannot be told apart as collector or local).
 -- The same views are rebuilt as in 0004: intersections reads road_segments, integration_qa reads intersections.
@@ -14,8 +14,11 @@ CREATE FUNCTION "geo"."road_tier_rank"(town text, attrs jsonb, street_key text) 
 LANGUAGE sql IMMUTABLE AS $$
 	SELECT CASE town
 		WHEN 'Burlington' THEN CASE
-			WHEN attrs ->> 'OPTRCLASS' IS NULL THEN 9
+			WHEN attrs ->> 'OPTRCLASS' IS NULL AND attrs ->> 'STREETSEGMENTCLASSPICK' IS NULL THEN 9
 			WHEN upper(btrim(attrs ->> 'OPTRCLASS')) IN ('AR', 'MA', 'MP') THEN 1
+			-- Some arterials (the north end of Appleby Line, the south end of Brant Street) have a blank or CL
+			-- OPTRCLASS but the layer's own picklist calls them Arterial.
+			WHEN upper(btrim(attrs ->> 'STREETSEGMENTCLASSPICK')) = 'ARTERIAL' THEN 1
 			WHEN upper(btrim(attrs ->> 'OPTRCLASS')) = 'CL' THEN 2
 			WHEN upper(btrim(attrs ->> 'OPTRCLASS')) IN ('PF', 'PH') THEN 9
 			ELSE 3 END

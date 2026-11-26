@@ -350,6 +350,13 @@ describe.skipIf(!dockerAvailable)("curated views against PostGIS", () => {
         { MOFULLNAME: "OAK ST", OPTRCLASS: " " },
       );
       expect(await tierOf()).toBe("local");
+      await db.reset();
+      await addCross(
+        "Burlington",
+        { MOFULLNAME: "APPLEBY LINE", OPTRCLASS: " ", STREETSEGMENTCLASSPICK: "Arterial" },
+        { MOFULLNAME: "ELM ST", OPTRCLASS: " " },
+      );
+      expect(await tierOf()).toBe("arterial");
     });
 
     it("reads Oakville's PLAN_CLASS", async () => {
