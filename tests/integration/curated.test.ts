@@ -262,42 +262,38 @@ describe.skipIf(!dockerAvailable)("curated views against PostGIS", () => {
       vertical: Record<string, unknown>,
     ) {
       const name = roadFields[town].name;
-      for (const [attrs, ends] of [
+      const segments: [Record<string, unknown>, XY[]][] = [
         [
           horizontal,
           [
-            [
-              [-100, 0],
-              [0, 0],
-            ],
-            [
-              [0, 0],
-              [100, 0],
-            ],
+            [-100, 0],
+            [0, 0],
+          ],
+        ],
+        [
+          horizontal,
+          [
+            [0, 0],
+            [100, 0],
           ],
         ],
         [
           vertical,
           [
-            [
-              [0, -100],
-              [0, 0],
-            ],
-            [
-              [0, 0],
-              [0, 100],
-            ],
+            [0, -100],
+            [0, 0],
           ],
         ],
-      ] as const) {
-        for (const points of ends) {
-          await addFeature(
-            town,
-            "road_segments",
-            { [name]: "x", ...attrs },
-            lineString(points as XY[]),
-          );
-        }
+        [
+          vertical,
+          [
+            [0, 0],
+            [0, 100],
+          ],
+        ],
+      ];
+      for (const [attrs, points] of segments) {
+        await addFeature(town, "road_segments", { [name]: "x", ...attrs }, lineString(points));
       }
     }
     const tierOf = async () => {
